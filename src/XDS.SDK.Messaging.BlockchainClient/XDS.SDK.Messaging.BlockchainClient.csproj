@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>XDS.SDK.Messaging.BlockchainClient</AssemblyName>
+    <RootNamespace>XDS.SDK.Messaging.BlockchainClient</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="3.1.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\XDS.SDK.Messaging.ApplicationBehavior\XDS.SDK.Messaging.ApplicationBehavior.csproj" />
+    <ProjectReference Include="..\XDS.SDK.Messaging.CrossTierTypes\XDS.SDK.Messaging.CrossTierTypes.csproj" />
+  </ItemGroup>
+
+</Project>

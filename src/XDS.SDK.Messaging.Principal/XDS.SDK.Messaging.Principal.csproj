@@ -1,0 +1,13 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\XDS.SDK.Lib.Bech32\XDS.SDK.Lib.Bech32.csproj" />
+    <ProjectReference Include="..\XDS.SDK.Lib.HDKeys\XDS.SDK.Lib.HDKeys.csproj" />
+    <ProjectReference Include="..\XDS.SDK.Messaging.CrossTierTypes\XDS.SDK.Messaging.CrossTierTypes.csproj" />
+  </ItemGroup>
+
+</Project>
