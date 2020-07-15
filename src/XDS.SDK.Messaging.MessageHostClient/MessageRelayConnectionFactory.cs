@@ -17,7 +17,7 @@ namespace XDS.SDK.Messaging.MessageHostClient
 {
     public class MessageRelayConnectionFactory : ITcpConnection
     {
-        const int DefaultMessagingPort = 55558;
+        const int DefaultMessagingPort = 38334;
 
         readonly ILogger logger;
         readonly ICancellation cancellation;
