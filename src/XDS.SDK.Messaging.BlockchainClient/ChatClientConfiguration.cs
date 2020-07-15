@@ -16,7 +16,6 @@ namespace XDS.SDK.Messaging.BlockchainClient
         public static PeerServices OwnPeerServices = PeerServices.NetworkLimited | PeerServices.MessagingClient;
 
         public readonly byte[] SessionNonce = Tools.GetRandomNonce();
-        public FStoreConfig RepositoryConfiguration;
         public string[] SeedNodes;
 
         public string UserAgentName { get; set; }

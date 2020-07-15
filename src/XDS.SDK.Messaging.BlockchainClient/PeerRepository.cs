@@ -11,20 +11,23 @@ namespace XDS.SDK.Messaging.BlockchainClient
     {
         static readonly SemaphoreSlim SemaphoreSlim = new SemaphoreSlim(1, 1);
 
-        readonly FStoreRepository<Peer> _peers;
+        readonly FStoreRepository<Peer> peers;
 
         public PeerRepository(FStoreConfig fStoreConfig)
         {
-            this._peers = new FStoreRepository<Peer>(new FStoreMono(fStoreConfig), PeerSerializer.SerializeCore, PeerSerializer.Deserialize);
+            this.peers = new FStoreRepository<Peer>(new FStoreMono(fStoreConfig), PeerSerializer.SerializeCore, PeerSerializer.Deserialize);
         }
 
 
-        public async Task AddPeer(Peer peer)
+        public async Task AddIfNotExistsAsync(Peer peer)
         {
             await SemaphoreSlim.WaitAsync();
             try
             {
-                await this._peers.Add(peer);
+                var existingPeer = await this.peers.Get(peer.Id);
+                if (existingPeer != null) 
+                    return;
+                await this.peers.Add(peer);
             }
             finally
             {
@@ -32,12 +35,12 @@ namespace XDS.SDK.Messaging.BlockchainClient
             }
         }
 
-        public async Task<Peer> GetPeer(string id)
+        public async Task<Peer> GetPeerAsync(string id)
         {
             await SemaphoreSlim.WaitAsync();
             try
             {
-                return await this._peers.Get(id);
+                return await this.peers.Get(id);
             }
             finally
             {
@@ -45,12 +48,12 @@ namespace XDS.SDK.Messaging.BlockchainClient
             }
         }
 
-        public async Task<uint> GetPeerCount()
+        public async Task<uint> GetPeerCountAsync()
         {
             await SemaphoreSlim.WaitAsync();
             try
             {
-                return await this._peers.Count();
+                return await this.peers.Count();
             }
             finally
             {
@@ -58,12 +61,12 @@ namespace XDS.SDK.Messaging.BlockchainClient
             }
         }
 
-        public async Task<IReadOnlyList<Peer>> GetAllPeers()
+        public async Task<IReadOnlyList<Peer>> GetAllPeersAsync()
         {
             await SemaphoreSlim.WaitAsync();
             try
             {
-                return await this._peers.GetAll();
+                return await this.peers.GetAll();
             }
             finally
             {
@@ -71,15 +74,15 @@ namespace XDS.SDK.Messaging.BlockchainClient
             }
         }
 
-        public async Task UpdatePeerLastError(string peerId, DateTime lastError)
+        public async Task UpdatePeerLastErrorAsync(string peerId, DateTime lastError)
         {
             await SemaphoreSlim.WaitAsync();
 
             try
             {
-                Peer contact = await this._peers.Get(peerId);
+                Peer contact = await this.peers.Get(peerId);
                 contact.LastError = lastError;
-                await this._peers.Update(contact, null);
+                await this.peers.Update(contact, null);
             }
             finally
             {
@@ -87,17 +90,17 @@ namespace XDS.SDK.Messaging.BlockchainClient
             }
         }
 
-        public async Task UpdatePeerAfterHandshake(Peer peer)
+        public async Task UpdatePeerAfterHandshakeAsync(Peer peer)
         {
             await SemaphoreSlim.WaitAsync();
 
             try
             {
-                Peer existingPeer = await this._peers.Get(peer.Id);
+                Peer existingPeer = await this.peers.Get(peer.Id);
                 existingPeer.PeerServices = peer.PeerServices;
                 existingPeer.LastSeen = peer.LastSeen;
                 existingPeer.LastError = DateTime.MaxValue;
-                await this._peers.Update(existingPeer, null);
+                await this.peers.Update(existingPeer, null);
             }
             finally
             {

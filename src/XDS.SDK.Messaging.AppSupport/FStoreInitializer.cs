@@ -15,9 +15,9 @@ namespace XDS.Messaging.SDK.AppSupport.NetStandard
 			Initializer = InitFStore
 		};
 
-		public static void InitFStore()
+		public static void InitFStore(FStoreConfig fStoreConfig)
 		{
-			var fStore = new FStoreMono(FStoreConfig);
+			var fStore = new FStoreMono(fStoreConfig);
 			if (!fStore.StoreExists())
 				fStore.CreateStore();
 

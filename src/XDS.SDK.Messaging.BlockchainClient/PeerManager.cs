@@ -19,32 +19,31 @@ namespace XDS.SDK.Messaging.BlockchainClient
         readonly ICancellation cancellation;
         readonly ChatClientConfiguration chatClientConfiguration;
 
-        readonly ConcurrentDictionary<string, ConnectedPeer> _connectedPeers =
+        readonly ConcurrentDictionary<string, ConnectedPeer> connectedPeers =
             new ConcurrentDictionary<string, ConnectedPeer>();
 
-        readonly ILogger _logger;
+        readonly ILogger logger;
         readonly ILoggerFactory loggerFactory;
 
-        readonly ConcurrentDictionary<string, Peer> _ownAddresses = new ConcurrentDictionary<string, Peer>();
-        readonly PeerRepository _peerRepository;
+        readonly ConcurrentDictionary<string, Peer> ownAddresses = new ConcurrentDictionary<string, Peer>();
+        readonly PeerRepository peerRepository;
 
-        readonly byte[] _sessionNonce = Tools.GetRandomNonce();
+        readonly byte[] sessionNonce = Tools.GetRandomNonce();
 
-        IReadOnlyList<Peer> _cachedPeers;
-        bool _hasShutDown;
+        bool hasShutDown;
 
         public PeerManager(ILoggerFactory loggerFactory, ICancellation cancellation,
-            IChatClientConfiguration chatClientConfiguration)
+            IChatClientConfiguration chatClientConfiguration, PeerRepository peerRepository)
         {
             this.loggerFactory = loggerFactory;
             this.cancellation = cancellation;
             this.chatClientConfiguration = (ChatClientConfiguration)chatClientConfiguration;
 
-            this._logger = this.loggerFactory.CreateLogger<PeerManager>();
+            this.logger = this.loggerFactory.CreateLogger<PeerManager>();
 
             this.cancellation.ApplicationStopping.Token.Register(DisposeAll);
 
-            this._peerRepository = new PeerRepository(this.chatClientConfiguration.RepositoryConfiguration);
+            this.peerRepository = peerRepository;
         }
 
         /// <summary>
@@ -54,14 +53,14 @@ namespace XDS.SDK.Messaging.BlockchainClient
 
        
 
-        public async Task AddSeedNodesIfMissing()
+        public async Task AddSeedNodesIfMissingAsync()
         {
             // The seed nodes should only be added if there are not already present, so that connection data is not overwritten
             foreach (var node in this.chatClientConfiguration.SeedNodes)
             {
                 var peerId = IPAddress.Parse(node).CreatePeerId(ChatClientConfiguration.DefaultPort);
 
-                var existingPeer = await this._peerRepository.GetPeer(peerId);
+                var existingPeer = await this.peerRepository.GetPeerAsync(peerId);
                 if (existingPeer != null) continue;
 
                 var peer = new Peer
@@ -72,38 +71,34 @@ namespace XDS.SDK.Messaging.BlockchainClient
                         .AddDays(-1) // seed nodes should no be promoted as the 'freshest' connections, but also not as archaic
                 };
 
-                await this._peerRepository.AddPeer(peer);
+                await this.peerRepository.AddIfNotExistsAsync(peer);
             }
         }
 
-        public async Task Start()
+        public async Task StartAsync()
         {
-            bool readFromCache = false;
 
             while (!this.cancellation.ApplicationStopping.IsCancellationRequested)
             {
-                while (this._connectedPeers.Count < 32 && !this.cancellation.ApplicationStopping.IsCancellationRequested)
+                while (this.connectedPeers.Count < 32 && !this.cancellation.ApplicationStopping.IsCancellationRequested)
                 {
                     ConnectedPeer
-                        nextPeer = await CreateNextPeer(
-                            readFromCache); // this method must block and only run on one thread, it's not thread safe
+                        nextPeer = await CreateNextPeerAsync(); // this method must block and only run on one thread, it's not thread safe
 
-                    readFromCache = true;
 
                     if (nextPeer == null)
                     {
-                        this._logger.LogInformation("Out off connection candidates...");
+                        this.logger.LogInformation("Out off connection candidates...");
                         break;
                     }
 
                     _ = Task.Run(() =>
-                        ConnectAndRun(
+                        ConnectAndRunAsync(
                             nextPeer)); // Connecting and running happens on max X threads, so that we can build up connections quickly
                 }
 
-                this._logger.LogInformation("Waiting 30 seconds..");
+                this.logger.LogInformation("Waiting 30 seconds..");
                 await Task.Delay(30000);
-                readFromCache = false;
             }
         }
 
@@ -113,7 +108,7 @@ namespace XDS.SDK.Messaging.BlockchainClient
             {
                 var sb = new StringBuilder();
                 var count = 0;
-                var all = this._connectedPeers.Values;
+                var all = this.connectedPeers.Values;
                 var conn = all.Where(x => x.PeerState.HasFlag(ConnectedPeer.State.VersionHandshake)).ToArray();
                 var attempting = all.Where(x => !x.PeerState.HasFlag(ConnectedPeer.State.VersionHandshake)).ToArray();
                 foreach (var connectedPeer in conn)
@@ -143,28 +138,27 @@ namespace XDS.SDK.Messaging.BlockchainClient
 
                 var list = sb.ToString();
 
-                this._logger.LogInformation(
-                    $"===== Peer Manager: {count} connections, {this._peerRepository.GetPeerCount().Result} known addresses =====\r\n{list}");
+                this.logger.LogInformation(
+                    $"===== Peer Manager: {count} connections, {this.peerRepository.GetPeerCountAsync().Result} known addresses =====\r\n{list}");
             }
             catch (Exception e)
             {
-                this._logger.LogError($"Error in PrintStatus: {e.Message}");
+                this.logger.LogError($"Error in PrintStatus: {e.Message}");
             }
         }
 
-        public async Task WaitForShutdown()
+        public async Task WaitForShutdownAsync()
         {
-            while (!this._hasShutDown) await Task.Delay(100);
+            while (!this.hasShutDown) await Task.Delay(100);
         }
 
-        public async Task<ConnectedPeer> CreateNextPeer(bool readFromCache)
+        public async Task<ConnectedPeer> CreateNextPeerAsync()
         {
-            IReadOnlyList<Peer> allPeers = readFromCache ? this._cachedPeers : await this._peerRepository.GetAllPeers();
-            this._cachedPeers = allPeers;
+            IReadOnlyList<Peer> allPeers = await this.peerRepository.GetAllPeersAsync();
 
             if (allPeers.Count == 0)
             {
-                this._logger.LogWarning("No peer addresses in the store - can't select a connection candidate!");
+                this.logger.LogWarning("No peer addresses in the store - can't select a connection candidate!");
                 return null;
             }
 
@@ -180,49 +174,49 @@ namespace XDS.SDK.Messaging.BlockchainClient
 
             if (hotPeers.Count == 0)
             {
-                this._logger.LogDebug(
+                this.logger.LogDebug(
                     "After applying the filtering rules, no connection candidates remain for selection.");
                 return null;
             }
 
             var candidate = hotPeers[0];
-            this._logger.LogDebug(
+            this.logger.LogDebug(
                 $"Selected connection candidate {candidate}, last seen {DateTimeOffset.UtcNow - candidate.LastSeen} ago, last error {DateTimeOffset.UtcNow - candidate.LastError} ago.");
             ConnectedPeer connectedPeer = new ConnectedPeer(candidate, this.loggerFactory);
-            bool addSuccess = this._connectedPeers.TryAdd(connectedPeer.RemotePeer.Id, connectedPeer);
+            bool addSuccess = this.connectedPeers.TryAdd(connectedPeer.RemotePeer.Id, connectedPeer);
             Debug.Assert(addSuccess,
                 $"Bug: Peer {candidate} was already in the ConnectedPeers dictionary - that should not happen.");
             return connectedPeer;
         }
 
-        public async Task ConnectAndRun(ConnectedPeer createdInstance)
+        public async Task ConnectAndRunAsync(ConnectedPeer createdInstance)
         {
             var connectedInstance = await CreateConnectedPeerBlockingOrThrowAsync(createdInstance);
 
             if (connectedInstance != null)
             {
-                this._logger.LogInformation(
+                this.logger.LogInformation(
                     $"Successfully created connected peer {createdInstance}, loading off to new thread.");
-                await RunNetworkPeer(createdInstance);
+                await RunNetworkPeerAsync(createdInstance);
             }
         }
 
-        async Task RunNetworkPeer(ConnectedPeer connectedPeer)
+        async Task RunNetworkPeerAsync(ConnectedPeer connectedPeer)
         {
             Debug.Assert(connectedPeer.PeerState.HasFlag(ConnectedPeer.State.Connected));
 
             try
             {
-                await connectedPeer.VersionHandshakeAsync(this.chatClientConfiguration.UserAgentName, this._sessionNonce, this.cancellation.ApplicationStopping.Token);
+                await connectedPeer.VersionHandshakeAsync(this.chatClientConfiguration.UserAgentName, this.sessionNonce, this.cancellation.ApplicationStopping.Token);
                 connectedPeer.PeerState |= ConnectedPeer.State.VersionHandshake;
 
-                this._ownAddresses.TryAdd(connectedPeer.SelfFromPeer.Id, connectedPeer.SelfFromPeer);
+                this.ownAddresses.TryAdd(connectedPeer.SelfFromPeer.Id, connectedPeer.SelfFromPeer);
 
                 // update also loaded (cached) instance and not only the repo
                 connectedPeer.RemotePeer.PeerServices = connectedPeer.PeerVersionPayload.Services; // update services
                 connectedPeer.RemotePeer.LastSeen = DateTime.UtcNow; // update success
                 connectedPeer.RemotePeer.LastError = DateTime.MaxValue; // clear error
-                await this._peerRepository.UpdatePeerAfterHandshake(connectedPeer.RemotePeer);
+                await this.peerRepository.UpdatePeerAfterHandshakeAsync(connectedPeer.RemotePeer);
 
                 this.OnVersionHandshakeSuccess?.Invoke(connectedPeer.RemotePeer.IPAddress,
                     connectedPeer.RemotePeer.ProtocolPort,
@@ -242,15 +236,15 @@ namespace XDS.SDK.Messaging.BlockchainClient
 
         bool IsExcluded(Peer peer)
         {
-            if (this._connectedPeers.ContainsKey(peer.Id))
+            if (this.connectedPeers.ContainsKey(peer.Id))
             {
-                this._logger.LogDebug($"Peer {peer} is excluded, because it's in the list of connected peers.");
+                this.logger.LogDebug($"Peer {peer} is excluded, because it's in the list of connected peers.");
                 return true;
             }
 
-            if (this._ownAddresses.ContainsKey(peer.Id))
+            if (this.ownAddresses.ContainsKey(peer.Id))
             {
-                this._logger.LogDebug($"Peer {peer} is excluded, because it's an address of ourselves.");
+                this.logger.LogDebug($"Peer {peer} is excluded, because it's an address of ourselves.");
                 return true;
             }
 
@@ -262,7 +256,7 @@ namespace XDS.SDK.Messaging.BlockchainClient
                 {
                     if (timeSinceLastError <= TimeSpan.FromSeconds(15))
                     {
-                        this._logger.LogDebug(
+                        this.logger.LogDebug(
                             $"Peer (MessageRelay) {peer} is excluded, because it's last error is only {timeSinceLastError} ago.");
                         return true;
                     }
@@ -271,7 +265,7 @@ namespace XDS.SDK.Messaging.BlockchainClient
                 {
                     if (timeSinceLastError <= TimeSpan.FromMinutes(3))
                     {
-                        this._logger.LogDebug(
+                        this.logger.LogDebug(
                             $"Peer (not a MessageRelay) {peer} is excluded, because it's last error is only {timeSinceLastError} ago.");
                         return true;
                     }
@@ -285,10 +279,9 @@ namespace XDS.SDK.Messaging.BlockchainClient
         {
             var peer = receivedAddress.ToPeer();
 
-            var existingPeer = await this._peerRepository.GetPeer(peer.Id);
-            if (existingPeer != null) return;
+           
 
-            await this._peerRepository.AddPeer(peer);
+            await this.peerRepository.AddIfNotExistsAsync(peer);
         }
 
         async Task<ConnectedPeer> CreateConnectedPeerBlockingOrThrowAsync(ConnectedPeer connectedPeer)
@@ -298,7 +291,7 @@ namespace XDS.SDK.Messaging.BlockchainClient
                 connectedPeer.PeerState |= ConnectedPeer.State.Connecting;
                 await connectedPeer.ConnectAsync();
 
-                this._ownAddresses.TryAdd(connectedPeer.SelfFromSocket.Id, connectedPeer.SelfFromSocket);
+                this.ownAddresses.TryAdd(connectedPeer.SelfFromSocket.Id, connectedPeer.SelfFromSocket);
                 connectedPeer.PeerState |= ConnectedPeer.State.Connected;
 
                 return connectedPeer;
@@ -315,16 +308,16 @@ namespace XDS.SDK.Messaging.BlockchainClient
             Debug.Assert(connectedPeer.PeerState.HasFlag(ConnectedPeer.State.Failed));
             Debug.Assert(connectedPeer.PeerState.HasFlag(ConnectedPeer.State.Disposed));
 
-            if (ShouldRecordError(e, this.cancellation.ApplicationStopping.IsCancellationRequested, connectedPeer.ToString(), this._logger))
+            if (ShouldRecordError(e, this.cancellation.ApplicationStopping.IsCancellationRequested, connectedPeer.ToString(), this.logger))
             {
                 // set these properties on the loaded connectedPeer instance and not only in the repository, so that we can
                 // use the cached collection of Peer objects
                 connectedPeer.RemotePeer.LastError = DateTime.UtcNow;
-                await this._peerRepository.UpdatePeerLastError(connectedPeer.RemotePeer.Id,
+                await this.peerRepository.UpdatePeerLastErrorAsync(connectedPeer.RemotePeer.Id,
                     connectedPeer.RemotePeer.LastError);
             }
 
-            var removeSuccess = this._connectedPeers.TryRemove(connectedPeer.RemotePeer.Id, out _);
+            var removeSuccess = this.connectedPeers.TryRemove(connectedPeer.RemotePeer.Id, out _);
             Debug.Assert(removeSuccess);
         }
 
@@ -371,19 +364,19 @@ namespace XDS.SDK.Messaging.BlockchainClient
 
         void DisposeAll()
         {
-            foreach (var connectedPeer in this._connectedPeers.Values)
+            foreach (var connectedPeer in this.connectedPeers.Values)
                 try
                 {
                     connectedPeer.Dispose();
-                    this._logger.LogInformation($"Network peer {connectedPeer} was disposed.");
+                    this.logger.LogInformation($"Network peer {connectedPeer} was disposed.");
                 }
                 catch (Exception e)
                 {
-                    this._logger.LogError($"Error disposing network peer {connectedPeer} {e.Message}");
+                    this.logger.LogError($"Error disposing network peer {connectedPeer} {e.Message}");
                 }
 
-            this._logger.LogInformation("All connections closed, all network peers disposed.");
-            this._hasShutDown = true;
+            this.logger.LogInformation("All connections closed, all network peers disposed.");
+            this.hasShutDown = true;
         }
     }
 }
