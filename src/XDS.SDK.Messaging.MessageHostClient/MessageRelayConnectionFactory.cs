@@ -226,7 +226,7 @@ namespace XDS.SDK.Messaging.MessageHostClient
 
         public MessageRelayConnection GetRandomConnection()
         {
-            var currentConnections = this.connections.Values.ToArray();
+            var currentConnections = this.connections.Values.Where(x=>x.ConnectionState.HasFlag(ConnectedPeer.State.Connected)).ToArray();
             if (currentConnections.Length == 0)
                 return null;
             return currentConnections[this.random.Next(currentConnections.Length)];
