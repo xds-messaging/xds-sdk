@@ -18,7 +18,7 @@ namespace XDS.SDK.Messaging.BlockchainClient
     {
         readonly ICancellation cancellation;
         readonly ChatClientConfiguration chatClientConfiguration;
-
+        readonly IMessageRelayAddressReceiver messageRelayAddressReceiver;
         readonly ConcurrentDictionary<string, ConnectedPeer> connectedPeers =
             new ConcurrentDictionary<string, ConnectedPeer>();
 
@@ -33,7 +33,7 @@ namespace XDS.SDK.Messaging.BlockchainClient
         bool hasShutDown;
 
         public PeerManager(ILoggerFactory loggerFactory, ICancellation cancellation,
-            IChatClientConfiguration chatClientConfiguration, PeerRepository peerRepository)
+            IChatClientConfiguration chatClientConfiguration, PeerRepository peerRepository, IMessageRelayAddressReceiver messageRelayAddressReceiver)
         {
             this.loggerFactory = loggerFactory;
             this.cancellation = cancellation;
@@ -44,14 +44,9 @@ namespace XDS.SDK.Messaging.BlockchainClient
             this.cancellation.ApplicationStopping.Token.Register(DisposeAll);
 
             this.peerRepository = peerRepository;
+            this.messageRelayAddressReceiver = messageRelayAddressReceiver;
         }
 
-        /// <summary>
-        /// A delegate that takes the IPAddress, the blockchain protocol port, PeerServices and user agent.
-        /// </summary>
-        public Action<IPAddress, int, PeerServices, string> OnVersionHandshakeSuccess { get; set; }
-
-       
 
         public async Task AddSeedNodesIfMissingAsync()
         {
@@ -218,9 +213,10 @@ namespace XDS.SDK.Messaging.BlockchainClient
                 connectedPeer.RemotePeer.LastError = DateTime.MaxValue; // clear error
                 await this.peerRepository.UpdatePeerAfterHandshakeAsync(connectedPeer.RemotePeer);
 
-                this.OnVersionHandshakeSuccess?.Invoke(connectedPeer.RemotePeer.IPAddress,
+                this.messageRelayAddressReceiver.ReceiveMessageRelayRecordAsync(connectedPeer.RemotePeer.IPAddress,
                     connectedPeer.RemotePeer.ProtocolPort,
                     connectedPeer.RemotePeer.PeerServices, connectedPeer.PeerVersionPayload.UserAgent.Text);
+               
 
 
                 await connectedPeer.GetAddressesAsync(AddToAddressBookIfNotExistsAsync, this.cancellation.ApplicationStopping.Token);
@@ -232,7 +228,7 @@ namespace XDS.SDK.Messaging.BlockchainClient
             }
         }
 
-
+       
 
         bool IsExcluded(Peer peer)
         {

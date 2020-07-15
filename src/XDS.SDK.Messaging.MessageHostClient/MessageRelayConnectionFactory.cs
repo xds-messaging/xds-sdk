@@ -15,7 +15,7 @@ using XDS.SDK.Messaging.MessageHostClient.Data;
 
 namespace XDS.SDK.Messaging.MessageHostClient
 {
-    public class MessageRelayConnectionFactory : ITcpConnection
+    public class MessageRelayConnectionFactory : ITcpConnection, IMessageRelayAddressReceiver
     {
         const int DefaultMessagingPort = 38334;
 
@@ -29,13 +29,13 @@ namespace XDS.SDK.Messaging.MessageHostClient
         ConcurrentDictionary<string, MessageRelayConnection> connections;
 
         Task connectTask;
-        public MessageRelayConnectionFactory(ILoggerFactory loggerFactory, ICancellation cancellation, MessageRelayRecordRepository messageRelayRecords, PeerManager peerManager)
+
+        public MessageRelayConnectionFactory(ILoggerFactory loggerFactory, ICancellation cancellation, MessageRelayRecordRepository messageRelayRecords)
         {
             this.messageRelayRecords = messageRelayRecords;
             this.connections = new ConcurrentDictionary<string, MessageRelayConnection>();
             this.cancellation = cancellation;
             this.logger = loggerFactory.CreateLogger<MessageRelayConnectionFactory>();
-            peerManager.OnVersionHandshakeSuccess = ReceiveMessageRelayRecordAsync;
         }
 
 
@@ -168,6 +168,9 @@ namespace XDS.SDK.Messaging.MessageHostClient
 
         async Task HandleFailedConnectedPeerAsync(Exception e, MessageRelayConnection connection)
         {
+            if(connection == null)  // there was no connection available
+                return;
+
             Debug.Assert(connection.ConnectionState.HasFlag(ConnectedPeer.State.Failed));
             Debug.Assert(connection.ConnectionState.HasFlag(ConnectedPeer.State.Disposed));
 
@@ -231,7 +234,8 @@ namespace XDS.SDK.Messaging.MessageHostClient
                 return null;
             return currentConnections[this.random.Next(currentConnections.Length)];
         }
-        async void ReceiveMessageRelayRecordAsync(IPAddress ipAddress, int port, PeerServices peerServices, string userAgent)
+
+        public async void ReceiveMessageRelayRecordAsync(IPAddress ipAddress, int port, PeerServices peerServices, string userAgent)
         {
             try
             {
@@ -254,6 +258,5 @@ namespace XDS.SDK.Messaging.MessageHostClient
             }
 
         }
-
     }
 }
