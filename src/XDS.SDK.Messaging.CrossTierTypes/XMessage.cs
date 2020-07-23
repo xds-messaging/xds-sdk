@@ -12,7 +12,7 @@ namespace XDS.SDK.Messaging.CrossTierTypes
         public byte[] TextCipher { get; set; }
         public byte[] ImageCipher { get; set; }
         public byte[] DynamicPublicKey { get; set; }
-        public long DynamicPublicKeyId { get; set; } // timestamp, not needed for decyption. Only needed for reply.
+        public long DynamicPublicKeyId { get; set; } // timestamp, not needed for decryption. Only needed for reply.
         public long PrivateKeyHint { get; set; }
 
 		/// <summary>

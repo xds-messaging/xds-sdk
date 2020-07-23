@@ -28,6 +28,11 @@
         NoSuchUser_Response = 56,
         DownloadMessages = 57,
         DownloadMessage_Response = 58,
+
+        PhotonBalance = 70,
+        PhotonBalance_Response = 71,
+
+
 		ServerException = 254,
 		
 	}

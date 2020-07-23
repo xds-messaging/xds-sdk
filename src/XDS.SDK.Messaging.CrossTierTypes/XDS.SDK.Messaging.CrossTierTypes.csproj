@@ -12,6 +12,7 @@
     <Platforms>AnyCPU;x64</Platforms>
     <AssemblyName>XDS.SDK.Messaging.CrossTierTypes</AssemblyName>
     <RootNamespace>XDS.SDK.Messaging.CrossTierTypes</RootNamespace>
+    <LangVersion>8.0</LangVersion>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
     <LangVersion>7.1</LangVersion>

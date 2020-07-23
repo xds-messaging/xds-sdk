@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using XDS.SDK.Cryptography.Api.Infrastructure;
 using XDS.SDK.Cryptography.NoTLS;
 
 namespace XDS.SDK.Messaging.CrossTierTypes
@@ -21,46 +22,55 @@ namespace XDS.SDK.Messaging.CrossTierTypes
         }
 
 
-	    public static byte[] Serialize(this RequestCommand requestCommand, CommandHeader commandHeader, out string networkPayloadHash)
-	    {
-		    if (commandHeader == CommandHeader.Yes)
-		    {
-			    var bodyPart = Serialize(requestCommand.Contents);
-			    networkPayloadHash = NetworkPayloadHash.ComputeAsGuidString(bodyPart);
-				return bodyPart.AddHeader(requestCommand.CommandId);
-			}
-			   
-		    var body = Serialize(requestCommand.Contents);
-		    networkPayloadHash = NetworkPayloadHash.ComputeAsGuidString(body);
-		    return body;
-	    }
+        public static byte[] Serialize(this RequestCommand requestCommand, CommandHeader commandHeader, out string networkPayloadHash)
+        {
+            if (commandHeader == CommandHeader.Yes)
+            {
+                var bodyPart = Serialize(requestCommand.Contents);
+                networkPayloadHash = NetworkPayloadHash.ComputeAsGuidString(bodyPart);
+                return bodyPart.AddHeader(requestCommand.CommandId);
+            }
 
+            var body = Serialize(requestCommand.Contents);
+            networkPayloadHash = NetworkPayloadHash.ComputeAsGuidString(body);
+            return body;
+        }
 
-		static byte[] Serialize(object value)
+        static (long balance, int height, byte[] hashBlock, int photonError) test()
+        {
+            return default;
+        }
+
+        static byte[] Serialize(object value)
         {
             switch (value)
             {
-	            case null:
-		            throw new ArgumentNullException(nameof(value), "Serializer does not accept null.");
-	            case byte b:
-		            return new[] { b };
-	            case string s:
-		            return s.SerializeCore();
-	            case XMessage message:
-		            return message.SerializeCore();
-	            case XResendRequest resendRequest:
-		            return resendRequest.Serialize();
-	            case XIdentity xIdentity:
-		            return xIdentity.SerializeXIdentity();
-	            case List<XMessage> listOfMessage:
-		            return listOfMessage.SerializeCollection(XMessageExtensions.SerializeCore);
-	            case List<string> listOfString:
-		            return listOfString.SerializeCollection(PocoSerializer.SerializeCore);
-				default:
-					throw new NotSupportedException($"Serialization of {value.GetType()} is not supported.");
-			}
+                case null:
+                    throw new ArgumentNullException(nameof(value), "Serializer does not accept null.");
+                case byte b:
+                    return new[] { b };
+                case string s:
+                    return s.SerializeCore();
+                case XMessage message:
+                    return message.SerializeCore();
+                case XResendRequest resendRequest:
+                    return resendRequest.Serialize();
+                case XIdentity xIdentity:
+                    return xIdentity.SerializeXIdentity();
+                case List<XMessage> listOfMessage:
+                    return listOfMessage.SerializeCollection(XMessageExtensions.SerializeCore);
+                case List<string> listOfString:
+                    return listOfString.SerializeCollection(PocoSerializer.SerializeCore);
+                case ValueTuple<long, int, byte[], int> balance:
+                    var part1 = BitConverter.GetBytes(balance.Item1);
+                    var part2 = BitConverter.GetBytes(balance.Item2);
+                    var part4 = BitConverter.GetBytes(balance.Item4);
+                    return ByteArrays.Concatenate(part1, part2, balance.Item3, part4);
+                default:
+                    throw new NotSupportedException($"Serialization of {value.GetType()} is not supported.");
+            }
 
-	       
+
         }
         public static Command ParseCommand(this IRequestCommandData tlsRequest)
         {
@@ -72,10 +82,10 @@ namespace XDS.SDK.Messaging.CrossTierTypes
             return new Command((CommandId)tlsRequest.CommandData[0], commandWithoutHeader);
         }
 
-       
-       
 
-       
+
+
+
 
         static byte[] AddHeader(this byte[] serializedResponse, CommandId commandId)
         {
