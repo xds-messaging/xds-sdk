@@ -31,11 +31,12 @@
 
         PhotonBalance = 70,
         PhotonBalance_Response = 71,
+        PhotonOutputs = 72,
+        PhotonOutputs_Response = 73,
 
-
-		ServerException = 254,
-		
-	}
+        ServerException = 254,
+       
+    }
 
     public enum CommandHeader
     {

@@ -140,7 +140,7 @@ namespace XDS.SDK.Messaging.Principal
             
             CompressedPubKey compressedPubKey = derivedKey.PrivateKey.CompressedPubKey;
            var hash = compressedPubKey.GetHash160();
-           var bech = new Bech32Encoder("xds1");
+           var bech = new Bech32Encoder("xds");
            var address = bech.Encode(0, hash);
            return new XDSPubKeyAddress
            {

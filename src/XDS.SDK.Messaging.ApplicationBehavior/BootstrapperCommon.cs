@@ -32,7 +32,9 @@ namespace XDS.Messaging.SDK.ApplicationBehavior
             services.AddSingleton<ContactListManager>();
             services.AddSingleton<ContactsViewModel>();
             services.AddSingleton<OnboardingViewModel>();
-		}
+
+            services.AddSingleton<PhotonWalletManager>();
+        }
       
     }
 }
