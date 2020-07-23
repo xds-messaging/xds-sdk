@@ -68,7 +68,7 @@ namespace XDS.SDK.Messaging.CrossTierTypes.Photon
         NotImplemented = 16,
     }
 
-    public enum UtxoType
+    public enum UtxoType : byte
     {
         NotSet = 0,
         Mined = 1,

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using XDS.SDK.Cryptography.Api.Infrastructure;
 using XDS.SDK.Cryptography.NoTLS;
+using XDS.SDK.Messaging.CrossTierTypes.Photon;
 
 namespace XDS.SDK.Messaging.CrossTierTypes
 {
@@ -62,10 +63,21 @@ namespace XDS.SDK.Messaging.CrossTierTypes
                 case List<string> listOfString:
                     return listOfString.SerializeCollection(PocoSerializer.SerializeCore);
                 case ValueTuple<long, int, byte[], int> balance:
-                    var part1 = BitConverter.GetBytes(balance.Item1);
-                    var part2 = BitConverter.GetBytes(balance.Item2);
-                    var part4 = BitConverter.GetBytes(balance.Item4);
-                    return ByteArrays.Concatenate(part1, part2, balance.Item3, part4);
+                    {
+                        var part1 = BitConverter.GetBytes(balance.Item1);
+                        var part2 = BitConverter.GetBytes(balance.Item2);
+                        var part4 = BitConverter.GetBytes(balance.Item4);
+                        return ByteArrays.Concatenate(part1, part2, balance.Item3 ?? new byte[32], part4);
+                    }
+                case ValueTuple<long, int, byte[], IPhotonOutput[], int> outputs:
+                    {
+                        var balance = BitConverter.GetBytes(outputs.Item1);
+                        var height = BitConverter.GetBytes(outputs.Item2);
+                        var hashBlock = outputs.Item3 ?? new byte[32];
+                        var outputCollection = outputs.Item4.SerializeCollection(PhotonOutputExtensions.SerializeCore);
+                        var photonError = BitConverter.GetBytes(outputs.Item5);
+                        return ByteArrays.Concatenate(balance, height, hashBlock, photonError, outputCollection);
+                    }
                 default:
                     throw new NotSupportedException($"Serialization of {value.GetType()} is not supported.");
             }
