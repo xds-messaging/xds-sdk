@@ -54,9 +54,31 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Services.PortableImplementations
         {
             var request = $"{address};{(int)photonFlags}";
             var requestCommand = new RequestCommand(CommandId.PhotonOutputs, request).Serialize(CommandHeader.Yes);
-            var tlsResponse = this.networkClient.SendRequestAsync(requestCommand, Transport.TCP);
-            return default;
+            var tlsResponse = await this.networkClient.SendRequestAsync(requestCommand, Transport.TCP);
+            return DeserializePhotonOutputs(tlsResponse[0].CommandData);
         }
 
+        private (long balance, int height, byte[] hashBlock, IPhotonOutput[] outputs, PhotonError photonError) DeserializePhotonOutputs(byte[] serialized)
+        {
+            var startIndex = 0;
+
+            long balance = BitConverter.ToInt64(serialized, startIndex);
+            startIndex += sizeof(long);
+
+            int height = BitConverter.ToInt32(serialized, startIndex);
+            startIndex += sizeof(int);
+
+            byte[] hashBlock = new byte[32];
+            Buffer.BlockCopy(serialized, startIndex, hashBlock, 0, 32);
+            startIndex += 32;
+            PhotonError photonError = (PhotonError)BitConverter.ToInt32(serialized, startIndex);
+            startIndex += sizeof(int);
+
+            byte[] outputCollection = new byte[serialized.Length - startIndex];
+            Buffer.BlockCopy(serialized,startIndex,outputCollection,0,outputCollection.Length);
+            var deserialized = PocoSerializer.DeserializeCollection(outputCollection, PhotonOutputExtensions.DeserializePhotonOutput);
+            IPhotonOutput[] outputs = deserialized.ToArray();
+            return (balance, height, hashBlock,outputs, photonError);
+        }
     }
 }

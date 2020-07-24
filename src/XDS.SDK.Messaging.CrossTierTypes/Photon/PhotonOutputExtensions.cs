@@ -4,7 +4,7 @@ using System.Text;
 
 namespace XDS.SDK.Messaging.CrossTierTypes.Photon
 {
-    static class PhotonOutputExtensions
+    public static class PhotonOutputExtensions
     {
         public static byte[] SerializeCore(this IPhotonOutput o)
         {
