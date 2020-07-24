@@ -45,6 +45,7 @@ namespace XDS.SDK.Messaging.CrossTierTypes
                 .Append(m.DynamicPublicKey)
                 .Append(m.DynamicPublicKeyId)
                 .Append(m.PrivateKeyHint)
+                .Append(m.IsDownloaded) // append this new Property at the end, to avoid breaking compatibility with older code/data
                 .Finish();
             return serialized;
         }
@@ -64,6 +65,15 @@ namespace XDS.SDK.Messaging.CrossTierTypes
             m.DynamicPublicKey = ser.MakeByteArray(4);
             m.DynamicPublicKeyId = ser.MakeInt64(5);
             m.PrivateKeyHint = ser.MakeInt64(6);
+
+            try
+            {
+                m.IsDownloaded = ser.MakeBoolean(7); // backwards compat
+            }
+            catch
+            {
+                m.IsDownloaded = false;
+            }
 
 	        m.SerializedPayload = message;
 

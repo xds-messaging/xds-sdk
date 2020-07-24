@@ -28,7 +28,8 @@ namespace XDS.SDK.Messaging.CrossTierTypes
 		public byte[] SerializedPayload { get; internal set; }  
 
 		public XMessageMetaData MessageMetaData { get; set; }
-	}
+        public bool IsDownloaded { get; set; }
+    }
 
 	public class XMessageMetaData
 	{
