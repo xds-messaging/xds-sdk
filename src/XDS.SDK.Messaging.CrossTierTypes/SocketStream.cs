@@ -16,7 +16,7 @@ namespace XDS.SDK.Messaging.CrossTierTypes
 
         public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
-            var read = this._streamSocket.Receive(buffer, SocketFlags.Partial);
+            var read = this._streamSocket.Receive(buffer, SocketFlags.None);
             return read;
         }
 
