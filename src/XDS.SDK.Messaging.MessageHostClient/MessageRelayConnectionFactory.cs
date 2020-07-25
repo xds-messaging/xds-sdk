@@ -23,12 +23,14 @@ namespace XDS.SDK.Messaging.MessageHostClient
         readonly ICancellation cancellation;
         readonly SemaphoreSlim semaphore = new SemaphoreSlim(1, 1);
         readonly Random random = new Random();
-       
+
         readonly MessageRelayRecordRepository messageRelayRecords;
 
         ConcurrentDictionary<string, MessageRelayConnection> connections;
 
         Task connectTask;
+
+        CancellationTokenSource connectionCts;
 
         public MessageRelayConnectionFactory(ILoggerFactory loggerFactory, ICancellation cancellation, MessageRelayRecordRepository messageRelayRecords)
         {
@@ -41,7 +43,7 @@ namespace XDS.SDK.Messaging.MessageHostClient
 
         public bool IsConnected
         {
-            get { return this.connections.Count > 0; }
+            get { return this.connections.Any(c => c.Value.ConnectionState == ConnectedPeer.State.Connected); }
         }
 
         public MessageRelayConnection[] GetCurrentConnections()
@@ -54,17 +56,23 @@ namespace XDS.SDK.Messaging.MessageHostClient
             if (this.connectTask != null)
                 return this.connections.Count > 0;
 
+            this.connectionCts = new CancellationTokenSource();
             this.connectTask = Task.Run(MaintainConnectionsAsync);
             return false;
         }
 
+        bool IsCancelled()
+        {
+            return this.cancellation.ApplicationStopping.IsCancellationRequested ||
+                   this.connectionCts.IsCancellationRequested;
+        }
 
         public async Task MaintainConnectionsAsync()
         {
 
-            while (!this.cancellation.ApplicationStopping.IsCancellationRequested)
+            while (!IsCancelled())
             {
-                while (this.connections.Count < 32 && !this.cancellation.ApplicationStopping.IsCancellationRequested)
+                while (this.connections.Count <= 3 && !IsCancelled())
                 {
                     var connection = await SelectNextConnectionAsync(); // this method must block and only run on one thread, it's not thread safe
 
@@ -168,13 +176,22 @@ namespace XDS.SDK.Messaging.MessageHostClient
 
         async Task HandleFailedConnectedPeerAsync(Exception e, MessageRelayConnection connection)
         {
-            if(connection == null)  // there was no connection available
+            if (connection == null)  // there was no connection available
                 return;
 
-            Debug.Assert(connection.ConnectionState.HasFlag(ConnectedPeer.State.Failed));
-            Debug.Assert(connection.ConnectionState.HasFlag(ConnectedPeer.State.Disposed));
+            if (e == null) // explicit disconnect
+            {
+                Debug.Assert(connection.ConnectionState.HasFlag(ConnectedPeer.State.Disconnecting));
+                Debug.Assert(connection.ConnectionState.HasFlag(ConnectedPeer.State.Disposed));
+            }
+            else
+            {
+                Debug.Assert(connection.ConnectionState.HasFlag(ConnectedPeer.State.Failed));
+                Debug.Assert(connection.ConnectionState.HasFlag(ConnectedPeer.State.Disposed));
+            }
 
-            if (PeerManager.ShouldRecordError(e, this.cancellation.ApplicationStopping.IsCancellationRequested, connection.ToString(), this.logger))
+
+            if (PeerManager.ShouldRecordError(e, IsCancelled(), connection.ToString(), this.logger))
             {
                 // set these properties on the loaded connection instance and not only in the repository, so that we can
                 // use the cached collection of Peer objects
@@ -190,8 +207,31 @@ namespace XDS.SDK.Messaging.MessageHostClient
 
         public async Task DisconnectAsync()
         {
-            await Task.CompletedTask;
+            this.logger.LogInformation("Disconnecting...");
+            this.connectionCts?.Cancel();
+            var activeConnections = GetCurrentConnections().Where(c => c.ConnectionState == ConnectedPeer.State.Connected).ToArray();
+            foreach (MessageRelayConnection activeConnection in activeConnections)
+            {
+                try
+                {
+                    activeConnection.ConnectionState |= ConnectedPeer.State.Disconnecting;
+                    activeConnection.Dispose();
+                }
+                catch (Exception w)
+                {
+
+                }
+
+                await HandleFailedConnectedPeerAsync(null, activeConnection);
+            }
+
+            if (this.connectTask != null && this.connectTask.Status == TaskStatus.Running)
+                this.connectTask.Wait();
+
+            this.connectTask = null;
+            this.logger.LogInformation("Disconnected!");
         }
+
 
 
 
@@ -229,7 +269,7 @@ namespace XDS.SDK.Messaging.MessageHostClient
 
         public MessageRelayConnection GetRandomConnection()
         {
-            var currentConnections = this.connections.Values.Where(x=>x.ConnectionState.HasFlag(ConnectedPeer.State.Connected)).ToArray();
+            var currentConnections = this.connections.Values.Where(x => x.ConnectionState.HasFlag(ConnectedPeer.State.Connected)).ToArray();
             if (currentConnections.Length == 0)
                 return null;
             return currentConnections[this.random.Next(currentConnections.Length)];

@@ -119,7 +119,7 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Services.PortableImplementations
         public async Task<CreateBackupResult> CreateBackup(string backupPassphrase, bool stopStartChatWorker, LongRunningOperationContext context = null)
         {
             if (stopStartChatWorker)
-                await this.chatWorker.StopRunLoopAndDisconnectAll();
+                await this.chatWorker.StopRunLoopAndDisconnectAllAsync();
 
             var backup = new Backup
             {
@@ -239,7 +239,7 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Services.PortableImplementations
         /// <returns></returns>
         public async Task DeleteAllData()
         {
-            await this.chatWorker.StopRunLoopAndDisconnectAll();
+            await this.chatWorker.StopRunLoopAndDisconnectAllAsync();
             await this.repo.DropRecreateStoreWithAllTables();
         }
 
