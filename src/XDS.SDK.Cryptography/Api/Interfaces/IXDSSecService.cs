@@ -50,7 +50,7 @@ namespace XDS.SDK.Cryptography.Api.Interfaces
 
         BigInteger GetPositive520BitInteger();
 
-        Response<byte[]> CombineRandom64(byte[] pseudoRandomBytes);
+        Response<byte[]> CombinePseudoRandomWithRandom(byte[] pseudoRandomBytes, int entropyLength);
 
         byte[] ComputeSHA512(byte[] data);
     }
