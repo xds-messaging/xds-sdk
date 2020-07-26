@@ -322,6 +322,9 @@ namespace XDS.SDK.Messaging.BlockchainClient
             if (isCancelled) // the app is closing, no error
                 return false;
 
+            if (e == null) // explicit disconnect
+                return false;
+
             if (e is ConnectedPeerException cpe)
             {
                 if (cpe.InnerException is SocketException se)

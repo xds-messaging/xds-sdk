@@ -122,7 +122,7 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.ViewModels
 			};
 			await this.repo.AddContact(addededContact);
 
-			await this.chatWorker.VerifyContactInAddedState(addededContact);
+			await this.chatWorker.VerifyContactInAddedStateAsync(addededContact);
 		}
 
 		public string AddedContactId

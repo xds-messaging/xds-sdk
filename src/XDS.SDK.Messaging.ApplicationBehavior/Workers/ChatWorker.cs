@@ -61,7 +61,7 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
 
         public async Task InitAsync()
         {
-            
+
 
             try
             {
@@ -79,10 +79,10 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
                     GetUser = this.repo.GetUserById,
                     UpdateUser = this.repo.UpdateUser
                 });
-               
+
 
                 this.ownChatId = ChatId.GenerateChatId(profile.PublicKey);
-                
+
                 this.chatClient.Init(this.ownChatId, profile.PrivateKey);
 
                 this.interval = this.settingsManager.ChatSettings.Interval;
@@ -97,19 +97,18 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
 
         public void StartRunning()
         {
-            
+
 
             if (this.isRunning)
                 return;
             this.isRunning = true;
             this.hasStopped = false;
-            Task.Run(RunUntilStop);
+            this.tcp.ConnectAsync(default, default);
+            Task.Run(RunUntilStopAsync);
         }
 
-        public async Task StopRunLoopAndDisconnectAll()
+        public async Task StopRunLoopAndDisconnectAllAsync()
         {
-            if (this.isRunning == false)
-                return;
             this.isRunning = false;
             await this.tcp.DisconnectAsync();
             while (!this.hasStopped)
@@ -119,15 +118,15 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
         }
 
 
-        async Task RunUntilStop()
+        async Task RunUntilStopAsync()
         {
-            
+
 
             while (this.isRunning)
             {
                 try
                 {
-                    await RunWithState();
+                    await RunWithStateAsync();
                 }
                 catch (Exception e)
                 {
@@ -138,24 +137,25 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
             this.hasStopped = true;
         }
 
-        async Task RunWithState()
+        async Task RunWithStateAsync()
         {
-            
-
             if (!this.tcp.IsConnected)
             {
-                if (!await TcpConnectAsync())
-                    return;
+                return;
             }
 
-            if (!this.appState.AreContactsChecked)
-            {
-                bool areContactsChecked = await TryGetMissingPublicKeysForContacts();
-                this.appState.SetAreContactsChecked(areContactsChecked);
+            // this might run a bit to often
+            
+            await TryGetMissingPublicKeysForContactsAsync();
 
-                if (!areContactsChecked)
-                    return;
-            }
+            //if (!this.appState.AreContactsChecked)
+            //{
+            //    bool areContactsChecked = await TryGetMissingPublicKeysForContactsAsync();
+            //    this.appState.SetAreContactsChecked(areContactsChecked);
+
+            //    if (!areContactsChecked)
+            //        return;
+            //}
 
             if (!this.appState.IsIdentityPublished)
             {
@@ -171,7 +171,7 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
 
             await SendReadReceipts();
 
-            await CheckForResendRequests();
+            await CheckForResendRequestsAsync();
 
             if (!this.appState.IsMessagesWaiting)
             {
@@ -216,7 +216,7 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
             }
         }
 
-        async Task CheckForResendRequests()
+        async Task CheckForResendRequestsAsync()
         {
             // 1. Get the hashes of messages where we did not get a delivery or read receipt
             var contacts = await this.repo.GetAllContacts();
@@ -291,7 +291,7 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
 
         async Task DecryptDownloadedMessage(XMessage xMessage)
         {
-            
+
 
             Message decryptedMessage = await TryDecryptMessageToFindSenderEnryptDecryptionKeyAndSaveIt(xMessage);
 
@@ -373,11 +373,11 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
         /// </summary>
         async Task<Message> TryDecryptMessageToFindSenderEnryptDecryptionKeyAndSaveIt(XMessage xmessage)
         {
-            
+
 
             try
             {
-               
+
 
                 IReadOnlyList<Identity> contacts = await this.repo.GetAllContacts();
 
@@ -605,30 +605,12 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
 
 
 
-        public async Task<bool> TcpConnectAsync()
-        {
-            
-
-            try
-            {
-                var host = this.settingsManager.ChatSettings.Hosts.SingleOrDefault(x => x.IsSelected);
-                if (host == null)
-                    throw new Exception("No host selected!");
-                this.logger.LogDebug($"ChatWorker: Attempting to connect via TCP: IP: {host.DnsIp}, Port: {host.Port}");
-                return await this.tcp.ConnectAsync(host.DnsIp, host.Port);
-            }
-            catch (Exception e)
-            {
-                this.logger.LogError(e.Message);
-                return false;
-            }
-        }
 
 
 
         async Task<bool> PublishIdentity()
         {
-            
+
 
             try
             {
@@ -666,33 +648,21 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
 
 
 
-        async Task<bool> TryGetMissingPublicKeysForContacts()
+        async Task TryGetMissingPublicKeysForContactsAsync()
         {
-            
+            var contacts = await this.repo.GetAllContacts();
 
-            try
+            foreach (var c in contacts.Where(c => c.ContactState == ContactState.Added))
             {
-                var contacts = await this.repo.GetAllContacts();
-
-                foreach (var c in contacts.Where(c => c.ContactState == ContactState.Added))
+                try
                 {
-                    try
-                    {
-                        await VerifyContactInAddedState(c);
-                    }
-                    catch (Exception e)
-                    {
-                        this.logger.LogDebug($"Error while attempting to download missing public key for contact {c.Id}:{e.Message}.");
-                    }
+                    await VerifyContactInAddedStateAsync(c);
                 }
-                return true;
+                catch (Exception e)
+                {
+                    this.logger.LogDebug($"Error while attempting to download missing public key for contact {c.Id}:{e.Message}.");
+                }
             }
-            catch (Exception e)
-            {
-                this.logger.LogError(e.Message);
-                return false;
-            }
-
         }
 
         #endregion
@@ -703,40 +673,43 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
         }
 
 
-
-
-
-        internal async Task VerifyContactInAddedState(Identity addedContact)
+        internal async Task VerifyContactInAddedStateAsync(Identity addedContact)
         {
-            
-
             Debug.Assert(addedContact.ContactState == ContactState.Added);
             Debug.Assert(Guid.TryParse(addedContact.Id, out var isGuid));
 
-            try
+
+            var response = await this.chatClient.GetIdentityAsync(addedContact.UnverifiedId);
+            if (!response.IsSuccess)
             {
-                var response = await this.chatClient.GetIdentityAsync(addedContact.UnverifiedId);
-                if (response.IsSuccess)
+                throw new InvalidOperationException($"ChatClient could not download identity: {response.Error}");
+            }
+
+            XIdentity contactAdded = response.Result;
+            if (contactAdded.ContactState == ContactState.Valid)
+            {
+                // It's on the server makeked as Valid, double check this
+                if (contactAdded?.Id != null && contactAdded.PublicIdentityKey != null &&
+                    ChatId.GenerateChatId(contactAdded.PublicIdentityKey) == contactAdded.Id)
                 {
-                    XIdentity contactAdded = response.Result;
-                    if (contactAdded.ContactState == ContactState.Valid)
-                    {
-                        // It's on the server makeked as Valid, double check this
-                        if (contactAdded?.Id != null && contactAdded.PublicIdentityKey != null && ChatId.GenerateChatId(contactAdded.PublicIdentityKey) == contactAdded.Id)
-                        {
-                            await this.repo.UpdateAddedContactWithPublicKey(contactAdded, Guid.Parse(addedContact.Id).ToString());
-                        }
-                    }
-                    else
-                    {
-                        await this.repo.UpdateContactState(new Identity { Id = addedContact.Id, ContactState = contactAdded.ContactState });
-                    }
+                    await this.repo.UpdateAddedContactWithPublicKey(contactAdded,
+                        Guid.Parse(addedContact.Id).ToString());
                     await this.contactListManager.ChatWorker_ContactUpdateReceived(null, addedContact.Id);
                 }
+                else
+                {
+                    throw new InvalidOperationException(
+                        $"Mismatch of id and public key in downloaded identity for added contact with unverified id {addedContact.UnverifiedId} received id {contactAdded.Id} and state '{contactAdded.ContactState}'. Expected state was 'Valid' and that the ids match.");
+                }
             }
-            catch (Exception e)
+            else if (contactAdded.ContactState == ContactState.NonExistent)
             {
-                this.logger.LogError(e.Message);
+                this.logger.LogInformation($"Added contact with unverified Id {addedContact.UnverifiedId} did not exist on the node that was queried.");
+            }
+            else
+            {
+                throw new InvalidOperationException(
+                    $"Downloaded identity for added contact with unverified id {addedContact.UnverifiedId} has id {contactAdded.Id} and state '{contactAdded.ContactState}'. Expected state was 'Valid' and that the ids match.");
             }
         }
 
@@ -744,7 +717,7 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
 
         public async Task SendReceipt(Message messageToSendReceiptFor, MessageType receiptType)
         {
-            
+
 
             try
             {
@@ -775,7 +748,7 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
 
         async Task SendReadReceipts()
         {
-            
+
 
             try
             {

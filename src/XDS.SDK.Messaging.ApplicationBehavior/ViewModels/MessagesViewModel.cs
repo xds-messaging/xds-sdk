@@ -273,7 +273,6 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.ViewModels
 					throw new Exception(response.Error);
 					//return;
 				}
-				await this._chatWorker.TcpConnectAsync();
 				await Send_MessageAsyncNew(message, failCount + 1);
 			}
 		}

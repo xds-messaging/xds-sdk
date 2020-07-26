@@ -8,6 +8,10 @@
     <DefineConstants>TRACE;HAS_SPAN</DefineConstants>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <DefineConstants>TRACE;HAS_SPAN</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\XDS.SDK.Lib.Secp256k1\XDS.SDK.Lib.Secp256k1.csproj" />
   </ItemGroup>

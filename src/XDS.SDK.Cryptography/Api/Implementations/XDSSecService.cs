@@ -551,32 +551,30 @@ namespace XDS.SDK.Cryptography.Api.Implementations
             return number;
         }
 
-        public Response<byte[]> CombineRandom64(byte[] pseudoRandomBytes)
+        public Response<byte[]> CombinePseudoRandomWithRandom(byte[] pseudoRandomBytes, int entropyLength)
         {
             var response = new Response<byte[]>();
             try
             {
                 EnsurePlatform();
 
-                const int outputLength = 64;
-
-                if (pseudoRandomBytes.Length < outputLength)
+                if (pseudoRandomBytes.Length < entropyLength)
                 {
-                    response.SetError("The pseudo-random input must have a length of at least 64 bytes.");
+                    response.SetError($"The pseudo-random input must have a length of at least {entropyLength} bytes.");
                     return response;
                 }
 
 
-                var randomBytes = this._platform.GenerateRandomBytes(outputLength);
+                var randomBytes = this._platform.GenerateRandomBytes(entropyLength);
 
                 // XOR is only safe when at least one entropy source is true random.
                 // Since we do this all because we do not fully trust the system's cryptographic rng,
                 // we transform the pseudorandom entropy to something that comes very close to true random.
                 var pseudoRandomHashed = this._platform.ComputeSHA512(pseudoRandomBytes);
 
-                var output = new byte[outputLength];
+                var output = new byte[entropyLength];
 
-                for (int i = 0; i < 64; i++)
+                for (int i = 0; i < entropyLength; i++)
                 {
                     // cast to byte is needed by the C# compiler even though XOR would not overflow.
                     output[i] = (byte)(randomBytes[i] ^ pseudoRandomHashed[i]);
