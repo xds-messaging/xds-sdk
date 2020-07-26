@@ -74,6 +74,8 @@ namespace XDS.SDK.Messaging.CrossTierTypes
                         var balance = BitConverter.GetBytes(outputs.Item1);
                         var height = BitConverter.GetBytes(outputs.Item2);
                         var hashBlock = outputs.Item3 ?? new byte[32];
+                        if(outputs.Item4 == null)
+                            outputs.Item4 = new IPhotonOutput[0];
                         var outputCollection = outputs.Item4.SerializeCollection(PhotonOutputExtensions.SerializeCore);
                         var photonError = BitConverter.GetBytes(outputs.Item5);
                         return ByteArrays.Concatenate(balance, height, hashBlock, photonError, outputCollection);
