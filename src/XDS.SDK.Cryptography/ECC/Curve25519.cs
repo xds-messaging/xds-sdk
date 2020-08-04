@@ -16,7 +16,7 @@ using XDS.SDK.Cryptography.Api.Interfaces;
 
 namespace XDS.SDK.Cryptography.ECC
 {
-    sealed class Curve25519
+    public sealed class Curve25519
     {
          readonly IPlatform _platform;
 
