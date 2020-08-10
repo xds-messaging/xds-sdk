@@ -15,7 +15,7 @@ namespace XDS.SDK.Cryptography.NetStandard
                 throw new ArgumentOutOfRangeException("length");
 
             var randomBytes = new byte[length];
-			
+
             using (var rng = RandomNumberGenerator.Create())
             {
                 rng.GetBytes(randomBytes);
@@ -57,6 +57,16 @@ namespace XDS.SDK.Cryptography.NetStandard
             throw new InvalidOperationException(string.Format("{0} is not supported", aesDir));
         }
 
+        public byte[] ComputeSHA512(byte[] data, int offset, int count)
+        {
+            Guard.NotNull(data);
+
+            using (var sha = SHA512.Create())
+            {
+                return sha.ComputeHash(data, offset, count);
+            }
+        }
+
         public byte[] ComputeSHA512(byte[] data)
         {
             Guard.NotNull(data);
@@ -66,6 +76,8 @@ namespace XDS.SDK.Cryptography.NetStandard
                 return sha.ComputeHash(data);
             }
         }
+
+
 
         public byte[] ComputeSHA256(byte[] data)
         {
@@ -81,22 +93,22 @@ namespace XDS.SDK.Cryptography.NetStandard
         {
             Guard.NotNull(new object[] { iv, keyBytes });
 
-	        var aes = Aes.Create();
-	        aes.KeySize = 256;
-	        aes.BlockSize = 128;
-			aes.Padding = PaddingMode.None;
-	        aes.IV = iv;
-	        aes.Key = keyBytes;
-			aes.Mode = CipherMode.CBC;
-	        return aes;
+            var aes = Aes.Create();
+            aes.KeySize = 256;
+            aes.BlockSize = 128;
+            aes.Padding = PaddingMode.None;
+            aes.IV = iv;
+            aes.Key = keyBytes;
+            aes.Mode = CipherMode.CBC;
+            return aes;
 
         }
 
-	   
 
-      
 
-       
+
+
+
 
     }
 }

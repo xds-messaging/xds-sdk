@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using XDS.Messaging.SDK.ApplicationBehavior.Data;
 using XDS.Messaging.SDK.ApplicationBehavior.Models.Chat;
+using XDS.Messaging.SDK.ApplicationBehavior.Services.Interfaces;
 using XDS.Messaging.SDK.ApplicationBehavior.Services.PortableImplementations;
 using XDS.SDK.Cryptography.Api.DataTypes;
 using XDS.SDK.Cryptography.Api.Infrastructure;
@@ -16,7 +17,7 @@ using XDS.SDK.Messaging.CrossTierTypes;
 
 namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
 {
-    public class ChatWorker
+    public class ChatWorker : IWorker
     {
         public event EventHandler<Message> SendMessageStateUpdated;
         public event EventHandler<Message> IncomingMessageDecrypted;
@@ -31,17 +32,15 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
         readonly IChatEncryptionService chatEncryptionService;
         readonly E2ERatchet e2eRatchet;
 
-        readonly AbstractSettingsManager settingsManager;
         readonly ContactListManager contactListManager;
+        readonly ICancellation cancellation;
 
         string ownChatId;
         bool isInitialized;
-        bool isRunning;
-        bool hasStopped;
         int interval;
         bool readToReceive;
 
-        public ChatWorker(ILoggerFactory loggerFactory, AppState appState, AppRepository appRepository, ITcpConnection tcpConnection, IUdpConnection udpConnection, IChatClient chatClient, IXDSSecService ixdsCryptoService, IChatEncryptionService chatEncryptionService, E2ERatchet e2eRatchet, AbstractSettingsManager settingsManager, ContactListManager contactListManager)
+        public ChatWorker(ILoggerFactory loggerFactory, ICancellation cancellation, AppState appState, AppRepository appRepository, ITcpConnection tcpConnection, IUdpConnection udpConnection, IChatClient chatClient, IXDSSecService ixdsCryptoService, IChatEncryptionService chatEncryptionService, E2ERatchet e2eRatchet, ContactListManager contactListManager)
         {
             this.logger = loggerFactory.CreateLogger<ChatWorker>();
             this.appState = appState;
@@ -52,17 +51,18 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
             this.ixdsCryptoService = ixdsCryptoService;
             this.chatEncryptionService = chatEncryptionService;
             this.e2eRatchet = e2eRatchet;
-            this.settingsManager = settingsManager;
             this.contactListManager = contactListManager;
+            this.cancellation = cancellation;
+            cancellation.RegisterWorker(this);
+           
         }
 
         #region Start, Stop, Run
 
 
-        public async Task InitAsync()
+
+        public async Task InitializeAsync()
         {
-
-
             try
             {
                 if (this.isInitialized)
@@ -85,8 +85,9 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
 
                 this.chatClient.Init(this.ownChatId, profile.PrivateKey);
 
-                this.interval = this.settingsManager.ChatSettings.Interval;
+                this.interval = 1000;
                 this.isInitialized = true;
+                this.WorkerTask = Task.Run(WorkerTaskAsync);
             }
             catch (Exception e)
             {
@@ -95,47 +96,32 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
             }
         }
 
-        public void StartRunning()
+        async Task WorkerTaskAsync()
         {
-
-
-            if (this.isRunning)
-                return;
-            this.isRunning = true;
-            this.hasStopped = false;
-            this.tcp.ConnectAsync(default, default);
-            Task.Run(RunUntilStopAsync);
-        }
-
-        public async Task StopRunLoopAndDisconnectAllAsync()
-        {
-            this.isRunning = false;
-            await this.tcp.DisconnectAsync();
-            while (!this.hasStopped)
+            try
             {
-                await Task.Delay(100);
+                while (!this.cancellation.Token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await RunWithStateAsync();
+                    }
+                    catch (Exception e)
+                    {
+                        this.logger.LogError(e.Message);
+                    }
+
+                    await Task.Delay(this.interval, this.cancellation.Token);
+                }
+            }
+            catch (Exception e)
+            {
+                this.logger.LogCritical(e.Message);
+                this.FaultReason = e;
             }
         }
 
 
-        async Task RunUntilStopAsync()
-        {
-
-
-            while (this.isRunning)
-            {
-                try
-                {
-                    await RunWithStateAsync();
-                }
-                catch (Exception e)
-                {
-                    this.logger.LogError(e.Message);
-                }
-                await Task.Delay(this.interval);
-            }
-            this.hasStopped = true;
-        }
 
         async Task RunWithStateAsync()
         {
@@ -145,7 +131,7 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
             }
 
             // this might run a bit to often
-            
+
             await TryGetMissingPublicKeysForContactsAsync();
 
             //if (!this.appState.AreContactsChecked)
@@ -715,6 +701,10 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
 
         readonly ConcurrentQueue<Message> _readReceipts = new ConcurrentQueue<Message>();
 
+        public Task WorkerTask { get; set; }
+
+        public Exception FaultReason { get; private set; }
+
         public async Task SendReceipt(Message messageToSendReceiptFor, MessageType receiptType)
         {
 
@@ -762,6 +752,22 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
                 this.logger.LogError(e.Message);
             }
 
+        }
+
+
+        public string GetInfo()
+        {
+            return "====== ChatWorker =======";
+        }
+
+        public void Pause()
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Resume()
+        {
+            throw new NotImplementedException();
         }
     }
 }

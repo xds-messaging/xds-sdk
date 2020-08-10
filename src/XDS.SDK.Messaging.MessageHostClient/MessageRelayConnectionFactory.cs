@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using XDS.Messaging.SDK.ApplicationBehavior.Services.Interfaces;
+using XDS.Messaging.SDK.ApplicationBehavior.Workers;
 using XDS.SDK.Cryptography.NoTLS;
 using XDS.SDK.Messaging.BlockchainClient;
 using XDS.SDK.Messaging.CrossTierTypes;
@@ -15,7 +16,7 @@ using XDS.SDK.Messaging.MessageHostClient.Data;
 
 namespace XDS.SDK.Messaging.MessageHostClient
 {
-    public class MessageRelayConnectionFactory : ITcpConnection, IMessageRelayAddressReceiver
+    public class MessageRelayConnectionFactory : IWorker, ITcpConnection, IMessageRelayAddressReceiver
     {
         const int DefaultMessagingPort = 38334;
 
@@ -26,11 +27,9 @@ namespace XDS.SDK.Messaging.MessageHostClient
 
         readonly MessageRelayRecordRepository messageRelayRecords;
 
-        ConcurrentDictionary<string, MessageRelayConnection> connections;
+        readonly ConcurrentDictionary<string, MessageRelayConnection> connections;
 
-        Task connectTask;
 
-        CancellationTokenSource connectionCts;
 
         public MessageRelayConnectionFactory(ILoggerFactory loggerFactory, ICancellation cancellation, MessageRelayRecordRepository messageRelayRecords)
         {
@@ -38,6 +37,46 @@ namespace XDS.SDK.Messaging.MessageHostClient
             this.connections = new ConcurrentDictionary<string, MessageRelayConnection>();
             this.cancellation = cancellation;
             this.logger = loggerFactory.CreateLogger<MessageRelayConnectionFactory>();
+
+            cancellation.RegisterWorker(this);
+        }
+
+        public async Task InitializeAsync()
+        {
+            this.WorkerTask = Task.Run(MaintainConnectionsAsync);
+            await Task.CompletedTask;
+        }
+
+        public async Task MaintainConnectionsAsync()
+        {
+            try
+            {
+                while (!this.cancellation.Token.IsCancellationRequested)
+                {
+                    while (this.connections.Count <= 3 && !this.cancellation.Token.IsCancellationRequested)
+                    {
+                        var connection = await SelectNextConnectionAsync(); // this method must block and only run on one thread, it's not thread safe
+
+                        if (connection == null)
+                        {
+                            this.logger.LogInformation("Out off connection candidates...");
+                            break;
+                        }
+
+                        _ = Task.Run(() => ConnectAndRunAsync(connection)).ConfigureAwait(false); // Connecting and running happens on max X threads, so that we can build up connections quickly
+                    }
+
+                    this.logger.LogInformation("Waiting 30 seconds..");
+                    await Task.Delay(30000, this.cancellation.Token).ContinueWith(_ => { }); // we do not want to have a TaskCancelledException here
+                }
+            }
+            catch (Exception e)
+            {
+                this.logger.LogCritical(e.Message);
+                this.FaultReason = e;
+            }
+
+            ;
         }
 
 
@@ -46,6 +85,10 @@ namespace XDS.SDK.Messaging.MessageHostClient
             get { return this.connections.Any(c => c.Value.ConnectionState == ConnectedPeer.State.Connected); }
         }
 
+        public Task WorkerTask { get; private set; }
+
+        public Exception FaultReason { get; private set; }
+
         public MessageRelayConnection[] GetCurrentConnections()
         {
             return this.connections.Values.ToArray();
@@ -53,42 +96,10 @@ namespace XDS.SDK.Messaging.MessageHostClient
 
         public async Task<bool> ConnectAsync(string remoteDnsHost, int remotePort, Func<byte[], Transport, Task<string>> receiver = null)
         {
-            if (this.connectTask != null)
-                return this.connections.Count > 0;
-
-            this.connectionCts = new CancellationTokenSource();
-            this.connectTask = Task.Run(MaintainConnectionsAsync);
-            return false;
+            return this.connections.Count > 0;
         }
 
-        bool IsCancelled()
-        {
-            return this.cancellation.ApplicationStopping.IsCancellationRequested ||
-                   this.connectionCts.IsCancellationRequested;
-        }
 
-        public async Task MaintainConnectionsAsync()
-        {
-
-            while (!IsCancelled())
-            {
-                while (this.connections.Count <= 3 && !IsCancelled())
-                {
-                    var connection = await SelectNextConnectionAsync(); // this method must block and only run on one thread, it's not thread safe
-
-                    if (connection == null)
-                    {
-                        this.logger.LogInformation("Out off connection candidates...");
-                        break;
-                    }
-
-                    _ = Task.Run(() => ConnectAndRun(connection)); // Connecting and running happens on max X threads, so that we can build up connections quickly
-                }
-
-                this.logger.LogInformation("Waiting 30 seconds..");
-                await Task.Delay(30000);
-            }
-        }
 
         public async Task<MessageRelayConnection> SelectNextConnectionAsync()
         {
@@ -116,7 +127,7 @@ namespace XDS.SDK.Messaging.MessageHostClient
 
             MessageRelayRecord messageRelayRecord = hottestRecords[0];
             this.logger.LogDebug($"Selected connection candidate {messageRelayRecord}, last seen {DateTimeOffset.UtcNow - messageRelayRecord.LastSeenUtc} ago, last error {DateTimeOffset.UtcNow - messageRelayRecord.LastErrorUtc} ago.");
-            var messageRelayConnection = new MessageRelayConnection(messageRelayRecord, this.cancellation.ApplicationStopping.Token);
+            var messageRelayConnection = new MessageRelayConnection(messageRelayRecord, this.cancellation.Token);
             bool addSuccess = this.connections.TryAdd(messageRelayRecord.Id, messageRelayConnection);
             Debug.Assert(addSuccess, $"Bug: Peer {messageRelayRecord} was already in the ConnectedPeers dictionary - that should not happen.");
             return messageRelayConnection;
@@ -144,14 +155,13 @@ namespace XDS.SDK.Messaging.MessageHostClient
             return false;
         }
 
-        public async Task ConnectAndRun(MessageRelayConnection createdInstance)
+        async Task ConnectAndRunAsync(MessageRelayConnection createdInstance)
         {
             var connectedInstance = await CreateConnectedPeerBlockingOrThrowAsync(createdInstance);
 
             if (connectedInstance != null)
             {
-                this.logger.LogInformation(
-                    $"Successfully created connected peer {createdInstance}, loading off to new thread.");
+                this.logger.LogInformation($"Successfully created connected peer {createdInstance}, loading off to new thread.");
                 //await RunNetworkPeer(createdInstance);
             }
         }
@@ -191,7 +201,7 @@ namespace XDS.SDK.Messaging.MessageHostClient
             }
 
 
-            if (PeerManager.ShouldRecordError(e, IsCancelled(), connection.ToString(), this.logger))
+            if (PeerManager.ShouldRecordError(e, !this.cancellation.Token.IsCancellationRequested, connection.ToString(), this.logger))
             {
                 // set these properties on the loaded connection instance and not only in the repository, so that we can
                 // use the cached collection of Peer objects
@@ -203,36 +213,29 @@ namespace XDS.SDK.Messaging.MessageHostClient
             this.connections.TryRemove(connection.MessageRelayRecord.Id, out _);
         }
 
-
-
         public async Task DisconnectAsync()
         {
-            this.logger.LogInformation("Disconnecting...");
-            this.connectionCts?.Cancel();
-            var activeConnections = GetCurrentConnections().Where(c => c.ConnectionState == ConnectedPeer.State.Connected).ToArray();
-            foreach (MessageRelayConnection activeConnection in activeConnections)
+            foreach (MessageRelayConnection activeConnection in this.connections.Values)
             {
                 try
                 {
-                    activeConnection.ConnectionState |= ConnectedPeer.State.Disconnecting;
-                    activeConnection.Dispose();
-                }
-                catch (Exception w)
-                {
+                    if (activeConnection.ConnectionState.HasFlag(ConnectedPeer.State.Connected))
+                    {
+                        activeConnection.ConnectionState &= ~ConnectedPeer.State.Connected;
+                        activeConnection.ConnectionState |= ConnectedPeer.State.Disconnecting;
+                        activeConnection.Dispose();
+                        this.logger.LogInformation($"{nameof(MessageRelayConnection)} {activeConnection} was disposed.");
+                    }
 
+                }
+                catch (Exception e)
+                {
+                    this.logger.LogError($"Error disposing {nameof(MessageRelayConnection)} {activeConnection}: {e.Message}");
                 }
 
                 await HandleFailedConnectedPeerAsync(null, activeConnection);
             }
-
-            if (this.connectTask != null && this.connectTask.Status == TaskStatus.Running)
-                this.connectTask.Wait();
-
-            this.connectTask = null;
-            this.logger.LogInformation("Disconnected!");
         }
-
-
 
 
         public async Task<List<IEnvelope>> SendRequestAsync(byte[] request)
@@ -266,7 +269,6 @@ namespace XDS.SDK.Messaging.MessageHostClient
             return response;
         }
 
-
         public MessageRelayConnection GetRandomConnection()
         {
             var currentConnections = this.connections.Values.Where(x => x.ConnectionState.HasFlag(ConnectedPeer.State.Connected)).ToArray();
@@ -297,6 +299,23 @@ namespace XDS.SDK.Messaging.MessageHostClient
                 this.logger.LogError(e.Message);
             }
 
+        }
+
+
+
+        public string GetInfo()
+        {
+            return nameof(MessageRelayConnectionFactory);
+        }
+
+        public void Pause()
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Resume()
+        {
+            throw new NotImplementedException();
         }
     }
 }

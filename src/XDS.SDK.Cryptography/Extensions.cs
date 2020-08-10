@@ -10,10 +10,12 @@ namespace XDS.SDK.Cryptography
 		static readonly Dictionary<byte, byte[]> Utf8HexTable = new Dictionary<byte, byte[]>();
 		public static readonly Dictionary<ushort, byte> Utf8HexTableReverse = new Dictionary<ushort, byte>();
 
+        static bool IsTableInitComplete;
+
 		static readonly Dictionary<byte, string> HexTable = new Dictionary<byte, string>();
 		static readonly Dictionary<string, byte> HexTable2 = new Dictionary<string, byte>();
 
-		static readonly object lockObject = new object();
+		static readonly object LockObject = new object();
 
 		public static string ToBase64(this byte[] bytes)
 		{
@@ -37,7 +39,7 @@ namespace XDS.SDK.Cryptography
 
 		public static string ToHexString(this byte[] bytes)
 		{
-			EnsureHexTable();
+			EnsureHexTables();
 
 			var hexString = "";
 			foreach (byte b in bytes)
@@ -63,7 +65,7 @@ namespace XDS.SDK.Cryptography
 
 		public static byte[] ToUtf8Hex(this byte[] bytes)
 		{
-			EnsureHexTable();
+			EnsureHexTables();
 
 			var utf8Length = bytes.Length * 2;
 			var utf8MaxIndex = utf8Length - 1;
@@ -84,7 +86,7 @@ namespace XDS.SDK.Cryptography
 
 		public static byte[] FromUtf8Hex(this byte[] bytes)
 		{
-			EnsureHexTable();
+			EnsureHexTables();
 
 			var dest = new byte[bytes.Length / 2];
 
@@ -99,7 +101,7 @@ namespace XDS.SDK.Cryptography
 
 		public static byte[] FromHexString(this string hexString)
 		{
-			EnsureHexTable();
+			EnsureHexTables();
 
 			var bytes = new byte[hexString.Length / 2];
 			var byteIndex = 0;
@@ -111,13 +113,13 @@ namespace XDS.SDK.Cryptography
 			return bytes;
 		}
 
-		static void EnsureHexTable()
+		static void EnsureHexTables()
 		{
-			if (HexTable.Count == 0)
+			if (!IsTableInitComplete)
 			{
-				lock (lockObject)
+				lock (LockObject)
 				{
-					if (HexTable.Count == 0)
+					if (!IsTableInitComplete)
 					{
 						for (byte i = 0; i <= 255; i++)
 						{
@@ -127,11 +129,14 @@ namespace XDS.SDK.Cryptography
 							var twoBytes = Encoding.ASCII.GetBytes(hexString);
 							Utf8HexTable.Add(i, twoBytes);
 							Utf8HexTableReverse.Add(BitConverter.ToUInt16(twoBytes, 0), i);
-							if (i == 255)  // overflow!
-								return;
+                            if (i == 255) // overflow!
+                            {
+                                IsTableInitComplete = true;
+                                return;
+                            }
 						}
 					}
-				}
+                }
 			}
 		}
 	}

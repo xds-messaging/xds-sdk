@@ -16,7 +16,10 @@ namespace XDS.SDK.Messaging.CrossTierTypes.FStore
 	    public DirectoryInfo StoreLocation;
 
         /// <summary>
-        /// The store has a function to delete and recreate itself by executing this delegate.
+        /// A delegate that ensures all FStore directories if they do not exist and
+        /// configures all FStore repositories. This must be called both when it's a clean
+        /// install and on every normal run. IFStore.DeleteAndRecreateStore also
+        /// uses this.
         /// </summary>
 		public Action<FStoreConfig> Initializer;
 

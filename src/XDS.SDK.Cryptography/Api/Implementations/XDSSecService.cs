@@ -570,17 +570,22 @@ namespace XDS.SDK.Cryptography.Api.Implementations
                 // XOR is only safe when at least one entropy source is true random.
                 // Since we do this all because we do not fully trust the system's cryptographic rng,
                 // we transform the pseudorandom entropy to something that comes very close to true random.
-                var pseudoRandomHashed = this._platform.ComputeSHA512(pseudoRandomBytes);
+                var pseudoRandomHashed1 = this._platform.ComputeSHA512(pseudoRandomBytes, 0, entropyLength);
+                var pseudoRandomHashed2 = this._platform.ComputeSHA512(pseudoRandomBytes, 0, entropyLength / 2);
 
                 var output = new byte[entropyLength];
 
-                for (int i = 0; i < entropyLength; i++)
+                for (int i = 0; i < pseudoRandomHashed1.Length; i++)
                 {
                     // cast to byte is needed by the C# compiler even though XOR would not overflow.
-                    output[i] = (byte)(randomBytes[i] ^ pseudoRandomHashed[i]);
+                    output[i] = (byte)(randomBytes[i] ^ pseudoRandomHashed1[i]);
+                }
+                for (int i = pseudoRandomHashed1.Length; i < entropyLength; i++)
+                {
+                    output[i] = (byte)(randomBytes[i] ^ pseudoRandomHashed2[i - pseudoRandomHashed1.Length]);
                 }
 
-                
+
                 response.Result = output;
                 response.SetSuccess();
             }

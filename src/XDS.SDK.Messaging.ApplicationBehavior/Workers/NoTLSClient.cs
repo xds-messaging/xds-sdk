@@ -90,7 +90,7 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
 
         public async Task<List<IRequestCommandData>> SendRequestAsync(byte[] request, Transport transport)
         {
-            var response = new List<IRequestCommandData>();
+            var commandDataItems = new List<IRequestCommandData>();
             try
             {
                 var tlsRequestEnvelope = await this.Ratchet.EncryptRequest(request);
@@ -105,31 +105,30 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
                 }
                 if (transport == Transport.UDP && networkResponse.Count == 0)
                 {
-                    return response;
+                    return commandDataItems;
                 }
 
                 foreach (IEnvelope tlsEnvelope in networkResponse)
                 {
-                    NOTLSRequest tlsRequest = await this.Ratchet.DecryptRequest(tlsEnvelope);
+                    NOTLSRequest noTLSsRequest = await this.Ratchet.DecryptRequest(tlsEnvelope);
 
-                    Debug.Assert(tlsRequest.IsAuthenticated == false);
+                    Debug.Assert(noTLSsRequest.IsAuthenticated == false);
 
-
-                    Command command = tlsRequest.ParseCommand();
+                    Command command = noTLSsRequest.ParseCommand();
 
                     if (!command.CommandId.IsCommandDefined())
-                        throw new Exception($"Invalid Command {command.CommandId}");
+                        throw new InvalidOperationException($"Invalid Command {command.CommandId}");
 
                     if (command.CommandId == CommandId.ServerException)
-                        throw new Exception($"Server Exception: {command.CommandData.DeserializeStringCore()}");
-
-
-                    if (command.CommandId == CommandId.NoSuchUser_Response)
+                        throw new InvalidOperationException($"Server Exception: {command.CommandData.DeserializeStringCore()}");
+                    
+                    if (command.CommandId == CommandId.NoSuchUser_Response) // what was the idea here?
                     {
                         this.appState.SetIsIdentityPublished(false);
                     }
-                    tlsRequest.CommandData = command.CommandData; // minus the header
-                    response.Add(tlsRequest);
+
+                    noTLSsRequest.CommandData = command.CommandData; // minus the header
+                    commandDataItems.Add(noTLSsRequest);
                 }
             }
             catch (Exception e)
@@ -137,7 +136,7 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
                 this.logger.LogError(e.Message);
                 throw;
             }
-            return response;
+            return commandDataItems;
 
         }
 

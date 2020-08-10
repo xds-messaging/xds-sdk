@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -45,7 +46,7 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.ViewModels
 		{
 			if (string.IsNullOrEmpty(this.AddedContactId))
 			{
-				this.CurrentError = "XDS ID:";
+				this.CurrentError = "The XDS ID is required.";
 				return false;
 			}
 
@@ -58,25 +59,25 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.ViewModels
 
 			if (this.AddedContactId.Length < 13)
 			{
-				this.CurrentError = "XDS ID: too short!";
+				this.CurrentError = "This XDS ID is too short!";
 				return false;
 			}
 			if (this.AddedContactId.Length > 14)
 			{
-				this.CurrentError = "XDS ID: too long!";
+				this.CurrentError = "This XDS ID is too long!";
 				return false;
 			}
 
 			// TODO: Verify Base64 Chars
-			if (this.contactListManager.Contacts.Count(c => c.Id == this.AddedContactId) > 0)
+			if (this.contactListManager.Contacts.Count(c => c.ChatId == this.AddedContactId ) > 0)
 			{
-				this.CurrentError = "This Contact already exists!";
+				this.CurrentError = "This contact already exists.";
 				return false;
 			}
 
 			if (this.profileViewModel.ChatId == this.AddedContactId)
 			{
-				this.CurrentError = "You cannot add yourself as Contact!";
+				this.CurrentError = "You cannot add yourself.";
 				return false;
 			}
 
@@ -85,7 +86,7 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.ViewModels
                 ChatId.DecodeChatId(this.AddedContactId);
 
             }
-            catch (ArgumentException ae)
+            catch (InvalidDataException ae)
             {
                 this.CurrentError = ae.Message;
                 return false;
@@ -112,17 +113,22 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.ViewModels
 		}
 
 		async Task AddContact(string addedContactId)
-		{
-			var addededContact = new Identity
+        {
+            var name = $"Added {DateTime.Now.DayOfWeek}";
+
+            if (!string.IsNullOrWhiteSpace(this.NewName) && this.NewName.Trim().Length <= 35)
+                name = this.NewName.Trim();
+
+			var addedContact = new Identity
 			{
 				Id = Guid.NewGuid().ToString(),
 				UnverifiedId = addedContactId,
-				Name = "Added Contact",
+				Name = name,
 				ContactState = ContactState.Added
 			};
-			await this.repo.AddContact(addededContact);
+			await this.repo.AddContact(addedContact);
 
-			await this.chatWorker.VerifyContactInAddedStateAsync(addededContact);
+			await this.chatWorker.VerifyContactInAddedStateAsync(addedContact);
 		}
 
 		public string AddedContactId

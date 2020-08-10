@@ -21,8 +21,6 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Models.Serialization
 					return IdentitySerializer.SerializeCore(i).EncryptForStorage();
 				case Profile p:
 					return ProfileSerializer.SerializeCore(p).EncryptForStorage();
-				case DeviceVaultService.Backup b:
-					return BackupSerializer.SerializeCore(b);
 				default:
 					throw new ArgumentOutOfRangeException(nameof(item));
 			}
@@ -54,9 +52,6 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Models.Serialization
 
 			if (typeof(T) == typeof(Identity))
 				return IdentitySerializer.Deserialize(data.DecryptFromStorage()) as T;
-
-			if (typeof(T) == typeof(DeviceVaultService.Backup))
-				return BackupSerializer.Deserialize(data) as T;
 
 			throw new Exception();
 		}

@@ -52,7 +52,7 @@ namespace XDS.SDK.Messaging.Principal
             if (this.WalletSentence == this.ThirdSentence || this.SecondSentence == this.ThirdSentence)
                 throw new InvalidOperationException("All three sentences must be different.");
 
-            this.MasterKey = new byte[3 + 64];
+            this.MasterKey = new byte[3 * 64];
             Buffer.BlockCopy(this.WalletSeed, 0, this.MasterKey, 0 * 64, 64);
             Buffer.BlockCopy(this.SecondSeed, 0, this.MasterKey, 1 * 64, 64);
             Buffer.BlockCopy(this.ThirdSeed, 0, this.MasterKey, 2 * 64, 64);

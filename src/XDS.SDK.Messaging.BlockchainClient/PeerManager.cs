@@ -10,11 +10,12 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using XDS.Messaging.SDK.ApplicationBehavior.Services.Interfaces;
+using XDS.Messaging.SDK.ApplicationBehavior.Workers;
 using XDS.SDK.Messaging.BlockchainClient.Data;
 
 namespace XDS.SDK.Messaging.BlockchainClient
 {
-    public class PeerManager
+    public class PeerManager : IWorker
     {
         readonly ICancellation cancellation;
         readonly ChatClientConfiguration chatClientConfiguration;
@@ -30,26 +31,32 @@ namespace XDS.SDK.Messaging.BlockchainClient
 
         readonly byte[] sessionNonce = Tools.GetRandomNonce();
 
-        bool hasShutDown;
+
+        public Task WorkerTask { get; set; }
+        public Exception FaultReason { get; private set; }
 
         public PeerManager(ILoggerFactory loggerFactory, ICancellation cancellation,
             IChatClientConfiguration chatClientConfiguration, PeerRepository peerRepository, IMessageRelayAddressReceiver messageRelayAddressReceiver)
         {
             this.loggerFactory = loggerFactory;
             this.cancellation = cancellation;
+            this.cancellation.RegisterWorker(this);
             this.chatClientConfiguration = (ChatClientConfiguration)chatClientConfiguration;
 
             this.logger = this.loggerFactory.CreateLogger<PeerManager>();
 
-            this.cancellation.ApplicationStopping.Token.Register(DisposeAll);
+
 
             this.peerRepository = peerRepository;
             this.messageRelayAddressReceiver = messageRelayAddressReceiver;
+
+
         }
 
 
-        public async Task AddSeedNodesIfMissingAsync()
+        public async Task InitializeAsync()
         {
+
             // The seed nodes should only be added if there are not already present, so that connection data is not overwritten
             foreach (var node in this.chatClientConfiguration.SeedNodes)
             {
@@ -68,36 +75,48 @@ namespace XDS.SDK.Messaging.BlockchainClient
 
                 await this.peerRepository.AddIfNotExistsAsync(peer);
             }
+
+            this.WorkerTask = Task.Run(CreateConnectionsAsync);
         }
 
-        public async Task StartAsync()
+        public async Task CreateConnectionsAsync()
         {
-
-            while (!this.cancellation.ApplicationStopping.IsCancellationRequested)
+            try
             {
-                while (this.connectedPeers.Count < 32 && !this.cancellation.ApplicationStopping.IsCancellationRequested)
+                while (!this.cancellation.Token.IsCancellationRequested)
                 {
-                    ConnectedPeer
-                        nextPeer = await CreateNextPeerAsync(); // this method must block and only run on one thread, it's not thread safe
-
-
-                    if (nextPeer == null)
+                    while (this.connectedPeers.Count < 32 && !this.cancellation.Token.IsCancellationRequested)
                     {
-                        this.logger.LogInformation("Out off connection candidates...");
-                        break;
+                        ConnectedPeer
+                            nextPeer =
+                                await CreateNextPeerAsync(); // this method must block and only run on one thread, it's not thread safe
+
+
+                        if (nextPeer == null)
+                        {
+                            this.logger.LogInformation("Out off connection candidates...");
+                            break;
+                        }
+
+                        _ = Task.Run(() =>
+                            ConnectAndRunAsync(
+                                nextPeer)); // Connecting and running happens on max X threads, so that we can build up connections quickly
                     }
 
-                    _ = Task.Run(() =>
-                        ConnectAndRunAsync(
-                            nextPeer)); // Connecting and running happens on max X threads, so that we can build up connections quickly
+                    this.logger.LogInformation("Waiting 30 seconds..");
+                    await Task.Delay(30000, this.cancellation.Token).ContinueWith(_ => { }); // we do not want to have a TaskCancelledException here
                 }
-
-                this.logger.LogInformation("Waiting 30 seconds..");
-                await Task.Delay(30000);
+                DisconnectAsync();
             }
+            catch (Exception e)
+            {
+                this.logger.LogCritical(e.Message);
+                this.FaultReason = e;
+            }
+
         }
 
-        public void PrintStatus()
+        public string GetInfo()
         {
             try
             {
@@ -133,19 +152,17 @@ namespace XDS.SDK.Messaging.BlockchainClient
 
                 var list = sb.ToString();
 
-                this.logger.LogInformation(
-                    $"===== Peer Manager: {count} connections, {this.peerRepository.GetPeerCountAsync().Result} known addresses =====\r\n{list}");
+                var info =
+                    $"===== Peer Manager: {count} connections, {this.peerRepository.GetPeerCountAsync().Result} known addresses =====\r\n{list}";
+                return info;
             }
             catch (Exception e)
             {
-                this.logger.LogError($"Error in PrintStatus: {e.Message}");
+                return $"===== Peer Manager =====\r\nError in GetInfo: {e.Message}";
             }
         }
 
-        public async Task WaitForShutdownAsync()
-        {
-            while (!this.hasShutDown) await Task.Delay(100);
-        }
+
 
         public async Task<ConnectedPeer> CreateNextPeerAsync()
         {
@@ -202,7 +219,7 @@ namespace XDS.SDK.Messaging.BlockchainClient
 
             try
             {
-                await connectedPeer.VersionHandshakeAsync(this.chatClientConfiguration.UserAgentName, this.sessionNonce, this.cancellation.ApplicationStopping.Token);
+                await connectedPeer.VersionHandshakeAsync(this.chatClientConfiguration.UserAgentName, this.sessionNonce, this.cancellation.Token);
                 connectedPeer.PeerState |= ConnectedPeer.State.VersionHandshake;
 
                 this.ownAddresses.TryAdd(connectedPeer.SelfFromPeer.Id, connectedPeer.SelfFromPeer);
@@ -216,10 +233,10 @@ namespace XDS.SDK.Messaging.BlockchainClient
                 this.messageRelayAddressReceiver.ReceiveMessageRelayRecordAsync(connectedPeer.RemotePeer.IPAddress,
                     connectedPeer.RemotePeer.ProtocolPort,
                     connectedPeer.RemotePeer.PeerServices, connectedPeer.PeerVersionPayload.UserAgent.Text);
-               
 
 
-                await connectedPeer.GetAddressesAsync(AddToAddressBookIfNotExistsAsync, this.cancellation.ApplicationStopping.Token);
+
+                await connectedPeer.GetAddressesAsync(AddToAddressBookIfNotExistsAsync, this.cancellation.Token);
                 connectedPeer.PeerState |= ConnectedPeer.State.AddrReceived;
             }
             catch (Exception e)
@@ -228,7 +245,7 @@ namespace XDS.SDK.Messaging.BlockchainClient
             }
         }
 
-       
+
 
         bool IsExcluded(Peer peer)
         {
@@ -274,9 +291,6 @@ namespace XDS.SDK.Messaging.BlockchainClient
         async Task AddToAddressBookIfNotExistsAsync(BitcoinNetworkAddressPayload receivedAddress)
         {
             var peer = receivedAddress.ToPeer();
-
-           
-
             await this.peerRepository.AddIfNotExistsAsync(peer);
         }
 
@@ -299,25 +313,35 @@ namespace XDS.SDK.Messaging.BlockchainClient
             }
         }
 
-        async Task HandleFailedConnectedPeerAsync(Exception e, ConnectedPeer connectedPeer)
+        async Task HandleFailedConnectedPeerAsync(Exception e, ConnectedPeer connection)
         {
-            Debug.Assert(connectedPeer.PeerState.HasFlag(ConnectedPeer.State.Failed));
-            Debug.Assert(connectedPeer.PeerState.HasFlag(ConnectedPeer.State.Disposed));
+            if (connection == null)  // there was no connection available
+                return;
 
-            if (ShouldRecordError(e, this.cancellation.ApplicationStopping.IsCancellationRequested, connectedPeer.ToString(), this.logger))
+            if (e == null) // explicit disconnect
             {
-                // set these properties on the loaded connectedPeer instance and not only in the repository, so that we can
-                // use the cached collection of Peer objects
-                connectedPeer.RemotePeer.LastError = DateTime.UtcNow;
-                await this.peerRepository.UpdatePeerLastErrorAsync(connectedPeer.RemotePeer.Id,
-                    connectedPeer.RemotePeer.LastError);
+                Debug.Assert(connection.PeerState.HasFlag(ConnectedPeer.State.Disconnecting));
+                Debug.Assert(connection.PeerState.HasFlag(ConnectedPeer.State.Disposed));
+            }
+            else
+            {
+                Debug.Assert(connection.PeerState.HasFlag(ConnectedPeer.State.Failed));
+                Debug.Assert(connection.PeerState.HasFlag(ConnectedPeer.State.Disposed));
             }
 
-            var removeSuccess = this.connectedPeers.TryRemove(connectedPeer.RemotePeer.Id, out _);
-            Debug.Assert(removeSuccess);
+
+            if (PeerManager.ShouldRecordError(e, this.cancellation.Token.IsCancellationRequested, connection.ToString(), this.logger))
+            {
+                // set these properties on the loaded connection instance and not only in the repository, so that we can
+                // use the cached collection of Peer objects
+                connection.RemotePeer.LastError = DateTime.UtcNow;
+                await this.peerRepository.UpdatePeerLastErrorAsync(connection.RemotePeer.Id,
+                    connection.RemotePeer.LastError);
+            }
+            this.connectedPeers.TryRemove(connection.RemotePeer.Id, out _);
         }
 
-       public static  bool ShouldRecordError(Exception e, bool isCancelled, string connectionDescription, ILogger logger)
+        public static bool ShouldRecordError(Exception e, bool isCancelled, string connectionDescription, ILogger logger)
         {
             if (isCancelled) // the app is closing, no error
                 return false;
@@ -361,21 +385,45 @@ namespace XDS.SDK.Messaging.BlockchainClient
             return false; // in case of doubt, we record the error - this should probably be refined.
         }
 
-        void DisposeAll()
+        public void Pause()
         {
-            foreach (var connectedPeer in this.connectedPeers.Values)
+            throw new NotImplementedException();
+        }
+
+        public void Resume()
+        {
+            throw new NotImplementedException();
+        }
+
+        async Task DisconnectAsync()
+        {
+            foreach (ConnectedPeer connectedPeer in this.connectedPeers.Values)
+            {
                 try
                 {
-                    connectedPeer.Dispose();
-                    this.logger.LogInformation($"Network peer {connectedPeer} was disposed.");
+                    if (connectedPeer.PeerState.HasFlag(ConnectedPeer.State.Connected) || connectedPeer.PeerState.HasFlag(ConnectedPeer.State.Connecting))
+                    {
+                        connectedPeer.PeerState &= ~ConnectedPeer.State.Connected;
+                        connectedPeer.PeerState |= ConnectedPeer.State.Disconnecting;
+                        connectedPeer.Dispose();
+                        this.logger.LogInformation($"{nameof(ConnectedPeer)} {connectedPeer} was disposed.");
+                    }
                 }
                 catch (Exception e)
                 {
-                    this.logger.LogError($"Error disposing network peer {connectedPeer} {e.Message}");
+                    this.logger.LogError($"Error disposing {nameof(ConnectedPeer)} {connectedPeer}: {e.Message}");
                 }
 
-            this.logger.LogInformation("All connections closed, all network peers disposed.");
-            this.hasShutDown = true;
+                try
+                {
+                    await HandleFailedConnectedPeerAsync(null, connectedPeer);
+                }
+                catch (Exception e)
+                {
+                    this.logger.LogError($"Error in PeerManager.HandleFailedConnectedPeerAsync {nameof(ConnectedPeer)} {connectedPeer}: {e.Message}");
+                }
+               
+            }
         }
     }
 }

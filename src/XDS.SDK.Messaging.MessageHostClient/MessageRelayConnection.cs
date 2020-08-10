@@ -62,7 +62,8 @@ namespace XDS.SDK.Messaging.MessageHostClient
         {
             try
             {
-                this.TcpClient.Client.Shutdown(SocketShutdown.Both);
+                if (this.TcpClient.Connected)
+                    this.TcpClient.Client.Shutdown(SocketShutdown.Both);
             }
             catch
             {

@@ -29,7 +29,7 @@ namespace XDS.SDK.Messaging.CrossTierTypes
             Debug.Assert(chatId.Length == 14 || chatId.Length == 13);
             var test = DecodeChatId(chatId);
 
-            for (var i = 0; i < chatIdDataBytes.Length; i++)
+            for (var i = 0; i < chatIdDataBytes.Length - checksumLength; i++)
             {
                 if (chatIdDataBytes[i] != test[i])
                     throw new InvalidDataException();
@@ -39,30 +39,40 @@ namespace XDS.SDK.Messaging.CrossTierTypes
 
         }
 
-        public static byte[] DecodeChatId(string chatId)
+        /// <summary>
+        /// Decodes and checks the formal correctness of the XDS ID.
+        /// Throws InvalidDataException on all errors.
+        /// </summary>
+        /// <param name="id">XDS ID starting with 'xds1'</param>
+        /// <returns></returns>
+        public static byte[] DecodeChatId(string id)
         {
+            if (id == null)
+                throw new InvalidDataException("The XDS ID is required.");
+
+            if (!id.StartsWith(Prefix))
+                throw new InvalidDataException($"The XDS ID must start with '{Prefix}'.");
+
+            var base58Part = id.Substring(Prefix.Length);
+
+            byte[] bytes;
             try
             {
-                if (chatId == null)
-                    throw new ArgumentNullException(nameof(chatId));
-
-                if (!chatId.StartsWith(Prefix))
-                    throw new ArgumentException($"The chatId must start with {Prefix}.", nameof(chatId));
-
-                var base58Part = chatId.Substring(Prefix.Length);
-                byte[] bytes = Base58Encoding.Decode(base58Part);
-                var bytesForChecksum = bytes.Take(bytes.Length - 1).ToArray();
-                var actualChecksum = CalculateCheckSum(bytesForChecksum, IdBytesLength);
-                var expectedChecksum = bytes[bytes.Length - 1];
-                if (expectedChecksum != actualChecksum)
-                    throw new InvalidDataException("Invalid checksum!");
-                return bytes;
+                bytes = Base58Encoding.Decode(base58Part);
             }
-            catch (Exception e)
+            catch (Exception)
             {
-                throw new ArgumentException("not valid, please check spelling.", "chatId", e);
+                throw new InvalidDataException("Invalid bech58 in XDS ID.");
             }
 
+            var bytesForChecksum = bytes.Take(bytes.Length - 1).ToArray();
+            if (bytesForChecksum.Length != 6)
+                throw new InvalidDataException("Invalid XDS ID.");
+            byte actualChecksum = CalculateCheckSum(bytesForChecksum, IdBytesLength);
+            byte expectedChecksum = bytes[bytes.Length - 1];
+            if (expectedChecksum != actualChecksum)
+                throw new InvalidDataException("This XDS ID has an invalid checksum.");
+            return bytesForChecksum;
         }
 
         static byte CalculateCheckSum(byte[] dataPart, int numberOfBytesForChecksum)
