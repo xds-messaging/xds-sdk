@@ -92,11 +92,14 @@ namespace XDS.SDK.Cryptography.Simple
 
         }
 
+        public byte[] ComputeSHA512(byte[] data, int offset, int count)
+        {
+            Guard.NotNull(data);
 
-
-
-
-
-
+            using (var sha = SHA512.Create())
+            {
+                return sha.ComputeHash(data, offset, count);
+            }
+        }
     }
 }
