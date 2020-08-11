@@ -62,6 +62,13 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.ViewModels
         }
         string defaultAddress;
 
+        public string MasterSentence
+        {
+            get => this.masterSentence;
+            private set => Set(ref this.masterSentence, value);
+        }
+        string masterSentence;
+
         public bool IsIdentityPublished
         {
             get => this.isIdentityPublished;
@@ -98,15 +105,15 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.ViewModels
             this.ChatId = XDS.SDK.Messaging.CrossTierTypes.ChatId.GenerateChatId(this.PublicKey);
         }
 
-        XDSPrincipal xdsPrincipal;
-        public void OnboardingGenerateIdentity(XDSPrincipal principal)
+       XDSPrincipal xdsPrincipal;
+        public void OnboardingGenerateIdentity(XDSPrincipal principal, string masterSentence)
         {
             this.xdsPrincipal = principal;
             this.privateKey = this.xdsPrincipal.IdentityKeyPair.PrivateKey;
             this.PublicKey = this.xdsPrincipal.IdentityKeyPair.PublicKey;
             this.ChatId = this.xdsPrincipal.ChatId;
             this.DefaultAddress = this.xdsPrincipal.DefaultAddress.Address;
-
+            this.MasterSentence = masterSentence;
         }
 
 
