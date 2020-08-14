@@ -184,21 +184,21 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.ViewModels
 		{
 			if (string.IsNullOrEmpty(this.NewName))
 			{
-				this.RenameError = "Rename: Too short!";
+				this.RenameError = "Too short!";
 				return false;
 			}
 
 			if (this.NewName.Length > 50)
 			{
-				this.RenameError = "Rename: Too long!";
+				this.RenameError = "Too long!";
 				return false;
 			}
 			if (this.NewName == this.ContactToEdit.Name)
 			{
-				this.RenameError = "Rename: No Change...";
+				this.RenameError = "No Change...";
 				return false;
 			}
-			this.RenameError = "Rename:";
+			this.RenameError = "";
 			return true;
 
 		}

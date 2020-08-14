@@ -8,7 +8,7 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.ViewModels
 	public class ProfileViewModel : NotifyPropertyChanged
 	{
 		public const string ProfileFStoreId = "1";
-		public const string DefaultUsername = "Me";
+		public const string DefaultUsername = "Anonymous";
 
 		readonly AppRepository _repo;
 		readonly IFileService _fileService;
@@ -28,6 +28,20 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.ViewModels
 			private set => Set(ref this._name, value);
 		}
 		string _name;
+
+        public string NewName
+        {
+            get => this._newName;
+			set => Set(ref this._newName, value);
+        }
+        string _newName;
+
+        public string RenameError
+        {
+            get => this._renameError;
+            private set => Set(ref this._renameError, value);
+        }
+        string _renameError;
 
 		public byte[] PictureBytes
 		{
@@ -68,6 +82,7 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.ViewModels
 		{
 			var profile = await this._repo.GetProfile();
 			this.Name = profile.Name;
+            this.NewName = profile.Name;
             this.DefaultAddress = profile.DefaultAddress;
 			this.PublicKey = profile.PublicKey;
 			this.ChatId = XDS.SDK.Messaging.CrossTierTypes.ChatId.GenerateChatId(profile.PublicKey);
@@ -85,14 +100,7 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.ViewModels
 			await SaveChanges();
 		}
 
-		public async Task UpdateProfileName(string name)
-		{
-			if (string.IsNullOrWhiteSpace(name))
-				this.Name = DefaultUsername;
-			else
-				this.Name = name.Trim();
-			await SaveChanges();
-		}
+		
 
 		public async Task UpdateProfileImage(byte[] pictureBytes)
 		{
@@ -112,5 +120,37 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.ViewModels
 			profile.PictureBytes = this._pictureBytes;
 			await this._repo.UpdateProfile(profile);
 		}
+
+        public bool CanExecuteRenameCommand()
+        {
+            if (string.IsNullOrEmpty(this.NewName))
+            {
+                this.RenameError = "Too short!";
+                return false;
+            }
+
+            if (this.NewName.Length > 50)
+            {
+                this.RenameError = "Too long!";
+                return false;
+            }
+            if (this.NewName == this.Name)
+            {
+                this.RenameError = "No Change...";
+                return false;
+            }
+            this.RenameError = "";
+            return true;
+
+        }
+
+        public async Task ExecuteRenameCommand()
+        {
+            var profile = await this._repo.GetProfile();
+            profile.Name = this.NewName;
+            await this._repo.UpdateProfile(profile);
+            this.Name = NewName;
+        }
+
 	}
 }

@@ -480,7 +480,7 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
                             Id = Guid.NewGuid().ToString(),
                             StaticPublicKey = incomingPublicKey,
                             ContactState = ContactState.Valid,
-                            Name = "Incoming Contact",
+                            Name = "Anonymous",
                             FirstSeenUtc = date,
                             LastSeenUtc = date
                         };
