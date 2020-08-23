@@ -14,6 +14,8 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Services.Interfaces
 
         DirectoryInfo DataDirRoot { get; }
 
+        string GetTempDir(bool createIfNotExists);
+
         Task<bool> PrepareLaunch(DirectoryInfo dataDirRoot);
 
         void RegisterWorker(IWorker worker);
