@@ -170,7 +170,7 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Services.PortableImplementations
 
 		public bool CanChat(Contact contact)
 		{
-			return contact != null && (contact.ContactState == ContactState.Valid || contact.ContactState == ContactState.Revoked);
+			return contact != null && (contact.ContactState == ContactState.Valid);
 		}
 
 		public async Task InitFromStore()
@@ -223,7 +223,7 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Services.PortableImplementations
 
 		async Task LoadLastMessageFromStoreAndAddInfoToContactButDontCount(Contact contact, Identity identity)
 		{
-			if (identity.ContactState != ContactState.Valid && identity.ContactState != ContactState.Revoked)
+			if (identity.ContactState != ContactState.Valid)
 				return;
 
 			Message lastMessage = await this._repo.GetLastMessage(identity.Id);
@@ -304,12 +304,8 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Services.PortableImplementations
 		{
 			switch (contactState)
 			{
-				case ContactState.NonExistent:
-					return "Nonexistent";
 				case ContactState.Added:
 					return "Just added";
-				case ContactState.Revoked:
-					return "ID revoked!";
 				case ContactState.Valid:
 					return "Valid";
 				default:

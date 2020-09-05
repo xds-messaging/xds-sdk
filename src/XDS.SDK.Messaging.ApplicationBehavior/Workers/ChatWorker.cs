@@ -674,29 +674,17 @@ namespace XDS.Messaging.SDK.ApplicationBehavior.Workers
             XIdentity contactAdded = response.Result;
             if (contactAdded.ContactState == ContactState.Valid)
             {
-                // It's on the server makeked as Valid, double check this
-                if (contactAdded?.Id != null && contactAdded.PublicIdentityKey != null &&
-                    ChatId.GenerateChatId(contactAdded.PublicIdentityKey) == contactAdded.Id)
+                // It's on the server marked as valid, check if the public key resolves to the expected chat id
+                if (contactAdded.Id != null && contactAdded.PublicIdentityKey != null && ChatId.GenerateChatId(contactAdded.PublicIdentityKey) == contactAdded.Id)
                 {
-                    await this.repo.UpdateAddedContactWithPublicKey(contactAdded,
-                        Guid.Parse(addedContact.Id).ToString());
+                    await this.repo.UpdateAddedContactWithPublicKey(contactAdded, addedContact.Id);
                     await this.contactListManager.ChatWorker_ContactUpdateReceived(null, addedContact.Id);
+                    return;
                 }
-                else
-                {
-                    throw new InvalidOperationException(
-                        $"Mismatch of id and public key in downloaded identity for added contact with unverified id {addedContact.UnverifiedId} received id {contactAdded.Id} and state '{contactAdded.ContactState}'. Expected state was 'Valid' and that the ids match.");
-                }
+               
             }
-            else if (contactAdded.ContactState == ContactState.NonExistent)
-            {
-                this.logger.LogInformation($"Added contact with unverified Id {addedContact.UnverifiedId} did not exist on the node that was queried.");
-            }
-            else
-            {
-                throw new InvalidOperationException(
-                    $"Downloaded identity for added contact with unverified id {addedContact.UnverifiedId} has id {contactAdded.Id} and state '{contactAdded.ContactState}'. Expected state was 'Valid' and that the ids match.");
-            }
+            
+            throw new InvalidOperationException("VerifyContactInAddedStateAsync failed.");
         }
 
         readonly ConcurrentQueue<Message> _readReceipts = new ConcurrentQueue<Message>();
