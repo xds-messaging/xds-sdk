@@ -5,10 +5,10 @@
         Zero = 0,
         AnyNews = 10,
 
-	    CheckForResendRequest = 15,
-	    CheckForResendRequest_Response = 16,
+        CheckForResendRequest = 15,
+        CheckForResendRequest_Response = 16,
 
-		DownloadMessageParts = 20,
+        DownloadMessageParts = 20,
         UploadMessageParts = 30,
         AnyNews_Response = 31,
         DownloadMessageParts_Response = 32,
@@ -16,13 +16,16 @@
         UploadMessage = 34,
         UploadMessage_Response = 35,
 
-		UploadResendRequest = 36,
-	    UploadResendRequest_Response = 37,
+        UploadResendRequest = 36,
+        UploadResendRequest_Response = 37,
 
-		PublishIdentity = 50,
+        PublishIdentity = 50,
         PublishIdentity_Response = 51,
         GetIdentity = 52,
         GetIdentity_Response = 53,
+
+
+
         Headerless = 54,
         LostDynamicKey_Response = 55,
         NoSuchUser_Response = 56,
@@ -34,8 +37,13 @@
         PhotonOutputs = 72,
         PhotonOutputs_Response = 73,
 
+        PublishGroup = 150,
+        PublishGroup_Response = 151,
+        GetGroup = 152,
+        GetGroup_Response = 153,
+
         ServerException = 254,
-       
+
     }
 
     public enum CommandHeader

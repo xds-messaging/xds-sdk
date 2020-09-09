@@ -27,6 +27,7 @@
     <LangVersion>7.1</LangVersion>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\XDS.SDK.Core\XDS.SDK.Core.csproj" />
     <ProjectReference Include="..\XDS.SDK.Cryptography\XDS.SDK.Cryptography.csproj" />
   </ItemGroup>
 </Project>
